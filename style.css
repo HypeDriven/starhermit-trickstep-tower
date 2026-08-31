@@ -1,0 +1,340 @@
+/* Trickstep Tower — responsive shell, HUD, overlays, touch controls, a11y. */
+
+:root {
+  --bg: #10141f;
+  --panel: #1a2233;
+  --panel-2: #232e45;
+  --ink: #f2ead8;
+  --ink-dim: #b8b0a0;
+  --accent: #ffc861;
+  --accent-2: #9affd0;
+  --danger: #ff5a4e;
+  --focus: #8fb0ff;
+  --radius: 10px;
+  --font: "Segoe UI", system-ui, -apple-system, sans-serif;
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+}
+
+body[data-palette="deuteranopia"] { --accent: #ffd24a; --accent-2: #7ad0ff; --danger: #ff7a3e; }
+body[data-palette="protanopia"]   { --accent: #ffe27a; --accent-2: #8ac8ff; --danger: #ff8a5e; }
+body[data-palette="tritanopia"]   { --accent: #ffb85a; --accent-2: #7affc8; --danger: #ff5a7a; }
+body[data-palette="mono"]         { --accent: #e8e8e8; --accent-2: #b0b0b0; --danger: #ffffff; }
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  overflow: hidden;
+  line-height: 1.45;
+}
+body.large-text { font-size: 120%; }
+body.high-contrast { --panel: #000; --panel-2: #111; --ink: #fff; --ink-dim: #ddd; --accent: #ffe600; }
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  clip-path: inset(50%);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.safe-bar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  padding: calc(4px + var(--sat)) calc(12px + var(--sar)) 4px calc(12px + var(--sal));
+  pointer-events: none;
+  z-index: 5;
+}
+.wordmark {
+  margin: 0;
+  font-size: 0.85rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  font-weight: 600;
+}
+
+#app { position: fixed; inset: 0; }
+#game-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+/* ---------------- HUD ---------------- */
+
+#hud {
+  position: absolute;
+  top: calc(18px + var(--sat));
+  left: calc(10px + var(--sal));
+  right: calc(10px + var(--sar));
+  z-index: 4;
+  pointer-events: none;
+}
+.hud-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.hud-group {
+  background: color-mix(in srgb, var(--panel) 82%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  max-width: 70ch;
+}
+.hud-group.stats { display: flex; gap: 14px; flex-wrap: wrap; }
+.hud-group.stats b { color: var(--accent); }
+#hud-objective { display: block; font-weight: 600; }
+#hud-lesson { display: block; color: var(--ink-dim); font-size: 0.9em; max-width: 60ch; }
+#hud-limit { color: var(--danger); font-weight: 600; }
+#hud .btn { pointer-events: auto; }
+
+/* ---------------- overlay screens ---------------- */
+
+#overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(24px + var(--sat)) calc(16px + var(--sar)) calc(24px + var(--sab)) calc(16px + var(--sal));
+  background: rgba(8, 10, 18, 0.72);
+  backdrop-filter: blur(3px);
+  overflow-y: auto;
+}
+.screen {
+  background: var(--panel);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 14px;
+  padding: 22px 26px;
+  max-width: 860px;
+  width: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.5);
+}
+.screen h2 { margin-top: 0; color: var(--accent); }
+.screen-desc { color: var(--ink-dim); max-width: 70ch; }
+
+.btn {
+  font: inherit;
+  background: var(--panel-2);
+  color: var(--ink);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  border-radius: var(--radius);
+  padding: 10px 18px;
+  margin: 4px;
+  cursor: pointer;
+  min-height: 44px;
+  min-width: 44px;
+}
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); color: #201808; font-weight: 700; }
+.btn.big { font-size: 1.25rem; padding: 14px 34px; display: block; margin: 10px auto; }
+.btn.small { padding: 4px 10px; min-height: 36px; }
+.btn.subtle { opacity: 0.75; }
+.btn:focus-visible, .touch-btn:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.btn-row { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; }
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin: 12px 0;
+}
+.card {
+  background: var(--panel-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  padding: 14px;
+}
+.card.recommended { border-color: var(--accent); }
+.card h3 { margin: 0 0 6px; color: var(--accent-2); }
+.card .meta, .meta { color: var(--ink-dim); font-size: 0.88em; }
+
+.list { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+.list-item {
+  font: inherit;
+  text-align: left;
+  background: var(--panel-2);
+  color: var(--ink);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 44px;
+}
+.list-item:hover { border-color: var(--accent); }
+.list-item small { color: var(--ink-dim); }
+
+.stage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+  gap: 8px;
+  margin: 14px 0;
+}
+.stage-cell {
+  aspect-ratio: 1;
+  font: inherit;
+  background: var(--panel-2);
+  color: var(--ink);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  border-radius: 8px;
+  cursor: pointer;
+  position: relative;
+  min-width: 44px;
+  min-height: 44px;
+}
+.stage-cell.mastery { border-color: var(--accent-2); }
+.stage-cell.locked { opacity: 0.35; cursor: not-allowed; }
+.stage-cell .star { position: absolute; top: 1px; right: 4px; color: var(--accent); }
+
+.form { display: flex; flex-direction: column; gap: 10px; margin: 12px 0; max-width: 70ch; }
+.field { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.slider-row { display: flex; align-items: center; gap: 12px; }
+.slider-row span { width: 90px; }
+.slider-row input { flex: 1; }
+select, input[type="text"] {
+  font: inherit;
+  background: var(--panel-2);
+  color: var(--ink);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 8px;
+  min-height: 44px;
+}
+
+table.breakdown { border-collapse: collapse; margin: 10px 0; min-width: 280px; }
+table.breakdown td { padding: 4px 14px 4px 0; }
+table.breakdown td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+table.breakdown .neg { color: var(--danger); }
+table.breakdown .total td { border-top: 2px solid var(--accent); font-weight: 700; color: var(--accent); }
+
+.achievement-pop { color: var(--accent); font-weight: 700; }
+.achievements .got { color: var(--accent); }
+.scores li { padding: 3px 0; }
+
+/* ---------------- countdown ---------------- */
+
+#countdown {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 6rem;
+  font-weight: 800;
+  color: var(--accent);
+  text-shadow: 0 4px 30px rgba(0, 0, 0, 0.7);
+  pointer-events: none;
+}
+
+/* ---------------- touch controls ---------------- */
+
+#touch-controls {
+  position: absolute;
+  left: 0; right: 0;
+  bottom: calc(8px + var(--sab));
+  z-index: 6;
+  display: none;
+  justify-content: space-between;
+  padding: 0 calc(12px + var(--sar)) 0 calc(12px + var(--sal));
+  pointer-events: none;
+}
+.pad { display: flex; gap: 12px; pointer-events: auto; }
+.touch-btn {
+  font: inherit;
+  font-size: 1.3rem;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  background: color-mix(in srgb, var(--panel) 70%, transparent);
+  color: var(--ink);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.touch-btn.jump { width: 84px; height: 84px; font-weight: 700; }
+.touch-btn.held { background: var(--accent); color: #201808; }
+body.left-handed .move-pad { order: 2; }
+body.left-handed .jump-pad { order: 1; }
+body.left-handed #touch-controls { flex-direction: row-reverse; }
+
+@media (pointer: coarse) {
+  #touch-controls { display: flex; }
+}
+body[data-game-state="title"] #touch-controls,
+body[data-game-state="mode-select"] #touch-controls,
+body[data-game-state="results"] #touch-controls { display: none; }
+
+/* ---------------- captions ---------------- */
+
+#captions {
+  position: absolute;
+  bottom: calc(104px + var(--sab));
+  left: 0; right: 0;
+  text-align: center;
+  color: var(--ink);
+  text-shadow: 0 1px 4px #000;
+  font-size: 0.95rem;
+  z-index: 5;
+  pointer-events: none;
+}
+
+/* ---------------- responsive breakpoints ---------------- */
+
+/* Wide desktop: rails beside a centered playfield. */
+@media (min-width: 1024px) {
+  .screen { max-width: 900px; }
+  #hud { left: calc(24px + var(--sal)); right: calc(24px + var(--sar)); }
+}
+
+/* Portrait mobile: HUD stacks, sheets slide from bottom. */
+@media (max-width: 640px) and (orientation: portrait) {
+  .hud-top { flex-direction: column; }
+  .hud-group.stats { gap: 8px; font-size: 0.9em; }
+  .screen { padding: 16px; border-radius: 14px 14px 0 0; align-self: flex-end; }
+  #overlay { align-items: flex-end; padding-left: 0; padding-right: 0; }
+  #countdown { font-size: 4rem; }
+}
+
+/* Landscape mobile: compact status rail, keep 44px targets. */
+@media (max-height: 500px) and (orientation: landscape) {
+  #hud { top: calc(4px + var(--sat)); }
+  .hud-group { padding: 3px 8px; font-size: 0.85em; }
+  .touch-btn { width: 52px; height: 52px; }
+  .touch-btn.jump { width: 68px; height: 68px; }
+  .screen { max-height: 96vh; }
+}
+
+/* Reduced motion: no transitions/animations anywhere in the DOM layer. */
+body.reduced-motion * { animation: none !important; transition: none !important; }
+
+.noscript, .compat {
+  padding: 40px;
+  max-width: 60ch;
+  margin: 60px auto;
+  background: var(--panel);
+  border-radius: var(--radius);
+}

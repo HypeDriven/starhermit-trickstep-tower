@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Trickstep Tower — E2E harness</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body data-game-state="boot" data-palette="default">
+<header class="safe-bar"><h1 class="wordmark">Trickstep Tower</h1></header>
+<main id="app" aria-label="Trickstep Tower game"></main>
+<pre id="e2e" style="position:fixed;left:0;bottom:0;z-index:99;background:#000;color:#0f0;font-size:10px;max-height:40vh;overflow:auto;margin:0"></pre>
+<script type="module" src="./game.js"></script>
+<script type="module" src="./tools/e2e-driver.js"></script>
+</body>
+</html>

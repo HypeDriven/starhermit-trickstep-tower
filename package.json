@@ -1,0 +1,21 @@
+{
+  "name": "trickstep-tower",
+  "version": "1.0.0",
+  "description": "Trickstep Tower — a clockwork precision platformer for the browser",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "validate": "node tools/validate.js",
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.62.1"
+  }
+}

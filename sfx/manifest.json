@@ -1,0 +1,92 @@
+[
+  {
+    "name": "jump-launch",
+    "seconds": 1,
+    "prompt": "A quick springy platformer jump: soft leather-and-cloth push-off whoosh with a tiny clockwork ratchet click at the end, dry and close-miked.",
+    "event": "jump"
+  },
+  {
+    "name": "land-thud",
+    "seconds": 1,
+    "prompt": "A short dull body landing thud on a wooden platform, low muted impact with a faint boot scuff, no reverb tail.",
+    "event": "land"
+  },
+  {
+    "name": "step-tick",
+    "seconds": 1,
+    "prompt": "A single light footstep tap on hollow wood with a faint clockwork tick, very short and quiet, dry studio recording.",
+    "event": "step"
+  },
+  {
+    "name": "gear-collect",
+    "seconds": 1,
+    "prompt": "A bright metallic clink of a small brass gear being picked up, two quick ringing metal ticks with a short shimmer decay.",
+    "event": "gear"
+  },
+  {
+    "name": "death-crunch",
+    "seconds": 2,
+    "prompt": "A sudden mechanical trap snap: sharp metal clank followed by a brief crunching grind of gears and a low thump, cartoonish not gory.",
+    "event": "death"
+  },
+  {
+    "name": "checkpoint-chime",
+    "seconds": 2,
+    "prompt": "Two soft ascending brass bell chimes with a gentle clockwork winding sound underneath, warm and reassuring.",
+    "event": "checkpoint"
+  },
+  {
+    "name": "spring-boing",
+    "seconds": 1,
+    "prompt": "A cartoon coil spring boing, pitch rising upward as it launches, metallic and bouncy with a quick decay.",
+    "event": "spring"
+  },
+  {
+    "name": "win-fanfare",
+    "seconds": 3,
+    "prompt": "A short triumphant clockwork fanfare: four bright ascending bell notes with spinning ratchet clicks and a final warm chime.",
+    "event": "win"
+  },
+  {
+    "name": "fail-drop",
+    "seconds": 2,
+    "prompt": "A descending disappointed slide whistle falling in pitch ending in a soft wooden clunk, lighthearted game-over sting.",
+    "event": "fail"
+  },
+  {
+    "name": "invalid-buzz",
+    "seconds": 1,
+    "prompt": "A very short low mechanical buzz of a stuck gear refusing to turn, muted and brief, like a denied button press.",
+    "event": "invalid"
+  },
+  {
+    "name": "reveal-shimmer",
+    "seconds": 2,
+    "prompt": "A magical descending shimmer of small glass chimes as a hidden object sparkles into view, airy and high-pitched.",
+    "event": "reveal"
+  },
+  {
+    "name": "ui-click",
+    "seconds": 1,
+    "prompt": "A single crisp UI button click, like a small wooden toggle switch snapping, extremely short and dry.",
+    "event": "ui"
+  },
+  {
+    "name": "countdown-beep",
+    "seconds": 1,
+    "prompt": "A single clean mid-pitched electronic metronome beep for a countdown tick, short with a soft attack.",
+    "event": "countdown"
+  },
+  {
+    "name": "go-horn",
+    "seconds": 1,
+    "prompt": "A short bright starting horn blast, one high clear note like a tiny brass toy trumpet signaling go.",
+    "event": "go"
+  },
+  {
+    "name": "achievement-chime",
+    "seconds": 2,
+    "prompt": "A cheerful three-note rising glockenspiel chime with a sparkle tail, like unlocking a badge in a puzzle game.",
+    "event": "achievement"
+  }
+]
