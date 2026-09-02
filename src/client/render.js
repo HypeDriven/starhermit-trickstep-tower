@@ -23,7 +23,7 @@ export class Renderer {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: this.tier.antialias, powerPreference: 'default' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.tier.pixelRatio));
     this.renderer.shadowMap.enabled = this.tier.shadows;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
@@ -125,7 +125,8 @@ export class Renderer {
     envScene.add(new THREE.Mesh(geo, mat));
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     if (this.envRT) this.envRT.dispose();
-    this.envRT = pmrem.fromScene(envScene, 0.06);
+    // Sigma must stay under the PMREM sampler's 20-sample cap (0.06 asks for 30).
+    this.envRT = pmrem.fromScene(envScene, 0.035);
     this.scene.environment = this.envRT.texture;
     geo.dispose(); mat.dispose(); tex.dispose(); pmrem.dispose();
   }

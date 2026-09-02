@@ -317,6 +317,14 @@ body[data-game-state="results"] #touch-controls { display: none; }
   .screen { padding: 16px; border-radius: 14px 14px 0 0; align-self: flex-end; }
   #overlay { align-items: flex-end; padding-left: 0; padding-right: 0; }
   #countdown { font-size: 4rem; }
+  /* Mode cards: two compact columns so every mode + Back fits the viewport
+     without scrolling (the long blurb stays available on larger screens). */
+  .card-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .card { padding: 10px; }
+  .card h3 { font-size: 1rem; margin: 0 0 4px; }
+  .card .card-desc { display: none; }
+  .card .meta { font-size: 0.8em; margin: 0 0 6px; }
+  .card .btn { width: 100%; margin: 6px 0 0; padding: 8px 6px; }
 }
 
 /* Landscape mobile: compact status rail, keep 44px targets. */

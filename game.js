@@ -554,7 +554,7 @@ function levelById(id) {
 function modeCard(name, desc, meta, onGo, recommended) {
   const card = el('div', { class: 'card' + (recommended ? ' recommended' : '') });
   card.appendChild(el('h3', { text: name }));
-  card.appendChild(el('p', { text: desc }));
+  card.appendChild(el('p', { class: 'card-desc', text: desc }));
   card.appendChild(el('p', { class: 'meta', text: meta }));
   card.appendChild(el('button', { class: 'btn primary', text: recommended ? 'Play (recommended)' : 'Play', onclick: onGo }));
   return card;
