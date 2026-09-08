@@ -23,7 +23,7 @@ import { dailyLevel, getLevel, CONTENT_VERSION } from './src/content.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 8080;
-const DATA_FILE = path.join(ROOT, 'data.json');
+const DATA_FILE = process.env.TRICKSTEP_DATA_FILE || path.join(ROOT, 'data.json');
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -85,6 +85,8 @@ const hits = new Map();
 function rateLimited(req) {
   const ip = req.socket.remoteAddress || 'unknown';
   const now = Date.now();
+  // Drop expired buckets so the map cannot grow without bound.
+  if (hits.size > 1000) for (const [k, v] of hits) if (now > v.reset) hits.delete(k);
   const rec = hits.get(ip) || { count: 0, reset: now + 10000 };
   if (now > rec.reset) { rec.count = 0; rec.reset = now + 10000; }
   rec.count++;
@@ -222,10 +224,15 @@ async function handleApi(req, res, url) {
 const IMMUTABLE = /\.(js|css|png|svg)$/;
 
 function handleStatic(req, res, url) {
-  let pathname = decodeURIComponent(url.pathname);
+  let pathname;
+  try { pathname = decodeURIComponent(url.pathname); }
+  catch { return sendError(res, 400, 'bad-path'); }
+  if (pathname.split('/').some(part => part.startsWith('.') || ['data.json', 'node_modules', 'tests'].includes(part))) return sendError(res, 404, 'not found');
   if (pathname === '/') pathname = '/index.html';
   const file = path.normalize(path.join(ROOT, pathname));
-  if (!file.startsWith(ROOT)) return sendError(res, 403, 'forbidden');
+  // Compare against ROOT + separator: a bare prefix test also accepts sibling
+  // directories such as <root>-backup.
+  if (file !== ROOT && !file.startsWith(ROOT + path.sep)) return sendError(res, 403, 'forbidden');
   fs.readFile(file, (err, data) => {
     if (err) return sendError(res, 404, 'not found');
     const headers = { 'content-type': MIME[path.extname(file)] || 'application/octet-stream' };

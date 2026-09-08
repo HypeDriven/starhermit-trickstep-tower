@@ -48,6 +48,9 @@ export class Renderer {
     this.shake = 0;
     this.time = 0;
     this.decoRng = makeRng(1);
+    // Touch builds keep a control tray along the bottom edge; bias the follow
+    // point so the climber never sits behind it.
+    this.coarsePointer = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
 
     canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); this.contextLost = true; });
     canvas.addEventListener('webglcontextrestored', () => { this.contextLost = false; this.renderer.compile(this.scene, this.camera); });
@@ -66,6 +69,9 @@ export class Renderer {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    // Re-fit: the framing distance depends on the aspect ratio, so a rotation
+    // or window resize must recompute it or the level falls out of frame.
+    if (this.level) this._frameCamera(this.level);
   }
 
   // ------------------------------------------------------------ scene build
@@ -388,17 +394,82 @@ export class Renderer {
     if (color) P.pts.material.color.set(color);
   }
 
-  _frameCamera(level) {
+  // World-space bounding box of the tiles that actually exist. Generated
+  // stages leave large empty margins in the grid; framing on the grid instead
+  // of its contents pushes the playfield into a corner of the screen.
+  _contentBounds(level) {
     const rows = level.ascii.split('\n');
     const h = rows.length, w = Math.max(...rows.map(r => r.length));
+    let minCol = w, maxCol = -1, minRow = h, maxRow = -1;
+    for (let y = 0; y < h; y++) {
+      const row = rows[y] || '';
+      for (let x = 0; x < row.length; x++) {
+        if (row[x] === '.' || row[x] === ' ') continue;
+        if (x < minCol) minCol = x;
+        if (x > maxCol) maxCol = x;
+        if (y < minRow) minRow = y;
+        if (y > maxRow) maxRow = y;
+      }
+    }
+    if (maxCol < 0) return { minX: -w / 2, maxX: w / 2, minY: 0, maxY: h };
+    return {
+      minX: minCol - w / 2, maxX: maxCol + 1 - w / 2,
+      minY: h - maxRow - 1, maxY: h - minRow,
+    };
+  }
+
+  _frameCamera(level) {
     // Authored framing constants (no magic offsets elsewhere).
-    const MARGIN = 1.6, DIST_PER_UNIT = 1.15, LIFT = 0.2;
-    const cx = 0, cy = h / 2 + LIFT;
-    const dist = Math.max(w, h * this.camera.aspect) * 0.5 * DIST_PER_UNIT + MARGIN;
-    this.camBase = new THREE.Vector3(cx, cy, dist);
-    this.camera.position.copy(this.camBase);
+    // MARGIN: tiles of breathing room around the level bounds.
+    // VIEW_TILES: how much of the tower stays on screen while following, so the
+    // climber and the next few steps read clearly on any viewport.
+    // MIN_VIEW_W: narrow portrait viewports pull back far enough to still see
+    // the next steps sideways.
+    const MARGIN = 1.5, VIEW_TILES = 13, MIN_VIEW_W = 10;
+    const vHalf = Math.tan(THREE.MathUtils.degToRad(this.camera.fov) / 2);
+    const aspect = this.camera.aspect || 1;
+    const b = this._contentBounds(level);
+    const spanX = b.maxX - b.minX, spanY = b.maxY - b.minY;
+    // Distance that fits the whole playfield, and the closer follow distance.
+    const fitDist = Math.max((spanY / 2 + MARGIN) / vHalf, (spanX / 2 + MARGIN) / (vHalf * aspect));
+    const followDist = Math.max((VIEW_TILES / 2) / vHalf, (MIN_VIEW_W / 2) / (vHalf * aspect));
+    const dist = Math.min(fitDist, followDist);
+    this.camDist = dist;
+    this.viewHalfH = dist * vHalf;
+    this.viewHalfW = this.viewHalfH * aspect;
+    this.levelBounds = {
+      minX: b.minX - MARGIN, maxX: b.maxX + MARGIN,
+      minY: b.minY - MARGIN, maxY: b.maxY + MARGIN,
+    };
+    const midX = (b.minX + b.maxX) / 2, midY = (b.minY + b.maxY) / 2;
+    this.camBase = new THREE.Vector3(midX, midY, dist);
+    const [cx, cy] = this._cameraTarget(midX, midY);
+    this.camera.position.set(cx, cy, dist);
     this.camTarget.set(cx, cy, 0);
     this.camera.lookAt(this.camTarget);
+  }
+
+  // Camera centre that follows a world point but prefers not to show past the
+  // playfield bounds; centres an axis outright when the view covers it. The
+  // followed point always wins: a climber who leaves the platforms (a fall into
+  // the void) stays on screen rather than being framed out.
+  _cameraTarget(wx, wy) {
+    const b = this.levelBounds;
+    if (!b) return [wx, wy];
+    // Tiles kept between the follow point and the frame edge, scaled to the
+    // view so small viewports still clear the HUD and touch tray.
+    const EDGE_PAD = Math.min(2.5, this.viewHalfH * 0.25);
+    const axis = (v, min, max, half) => {
+      const c = half * 2 >= max - min
+        ? (min + max) / 2
+        : THREE.MathUtils.clamp(v, min + half, max - half);
+      const slack = Math.max(0, half - EDGE_PAD);
+      return THREE.MathUtils.clamp(c, v - slack, v + slack);
+    };
+    return [
+      axis(wx, b.minX, b.maxX, this.viewHalfW),
+      axis(wy, b.minY, b.maxY, this.viewHalfH),
+    ];
   }
 
   // ------------------------------------------------------------ per-frame
@@ -430,7 +501,7 @@ export class Renderer {
       }
       for (const [idx, mesh] of this.fakeMeshes) {
         if (state.fakesRevealed.includes(idx)) {
-          mesh.material.emissive = new THREE.Color(0xffffff);
+          mesh.material.emissive.setHex(0xffffff); // in place: no per-frame allocation
           mesh.material.emissiveIntensity = 0.12 + 0.1 * Math.sin(this.time * 6);
         }
       }
@@ -469,9 +540,9 @@ export class Renderer {
     }
     // Camera: critically damped follow toward player, plus tiered shake.
     if (state && this.camBase) {
-      const [px] = toWorld(state.player.x, 0);
-      const desired = this.camBase.clone();
-      desired.x = THREE.MathUtils.clamp(px, this.camBase.x - 4, this.camBase.x + 4);
+      const [px, py] = toWorld(state.player.x, state.player.y + PLAYER_H / 2);
+      const [tx, ty] = this._cameraTarget(px, py - (this.coarsePointer ? this.viewHalfH * 0.22 : 0));
+      const desired = new THREE.Vector3(tx, ty, this.camDist);
       if (this.settings.reducedMotion) {
         this.camera.position.copy(desired);
       } else {
@@ -484,7 +555,7 @@ export class Renderer {
           this.camera.position.y += (this.decoRng() - 0.5) * s;
         }
       }
-      this.camera.lookAt(this.camera.position.x, this.camBase.y, 0);
+      this.camera.lookAt(this.camera.position.x, this.camera.position.y, 0);
     }
     this.renderer.render(this.scene, this.camera);
   }

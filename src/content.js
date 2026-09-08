@@ -332,7 +332,8 @@ export function validateLevel(def) {
         const k = idx(nx, ny);
         if (seen.has(k)) continue;
         const t = map.tiles[k];
-        const below = ny + 1 < map.h ? map.tiles[idx(nx, ny + 1)] : TILE.SOLID;
+        // Nothing supports a cell on the bottom row: below the map is open air.
+        const below = ny + 1 < map.h ? map.tiles[idx(nx, ny + 1)] : TILE.EMPTY;
         if (open(t) && (solidish(below) || t === TILE.EXIT)) { seen.add(k); q.push([nx, ny]); }
       }
     }
@@ -352,7 +353,11 @@ export function validateAll() {
 
 export function getLevel(ref) {
   if (ref.startsWith('journey-')) return journeyStage(parseInt(ref.slice(8), 10));
-  if (ref.startsWith('learn-')) return TUTORIALS.find(t => t.id === ref);
+  if (ref.startsWith('learn-')) {
+    const t = TUTORIALS.find(t => t.id === ref);
+    if (!t) throw new Error('unknown tutorial: ' + ref);
+    return t;
+  }
   if (ref.startsWith('daily-')) return dailyLevel(new Date(ref.slice(6) + 'T00:00:00Z'));
   if (ref.startsWith('chal-')) return challengeLevel(ref);
   throw new Error('unknown level ref: ' + ref);

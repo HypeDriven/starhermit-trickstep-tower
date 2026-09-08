@@ -97,6 +97,9 @@ const app = {
   audio: null,
   els: {},
   lastAnnounce: '',
+  lastAnnounceAt: 0,
+  countdownTimer: null,
+  countdownHide: null,
 };
 app.platform.playerName = app.settings.name || localStorage.getItem('tt-name') || 'Guest';
 
@@ -126,9 +129,14 @@ function el(tag, attrs, children) {
   return e;
 }
 
+// Repeats of the same message are suppressed only briefly: a second death or a
+// second identical hint must still be announced.
+const ANNOUNCE_REPEAT_MS = 1500;
 function announce(text, assertive) {
-  if (text === app.lastAnnounce) return;
+  const now = Date.now();
+  if (text === app.lastAnnounce && now - app.lastAnnounceAt < ANNOUNCE_REPEAT_MS) return;
   app.lastAnnounce = text;
+  app.lastAnnounceAt = now;
   const region = assertive ? app.els.liveAssert : app.els.live;
   region.textContent = '';
   requestAnimationFrame(() => { region.textContent = text; });
@@ -193,7 +201,6 @@ class Session {
       announce('That action is not possible right now.', true);
     }
     for (const ev of events) this.onEvent(ev);
-    if (!wasAirborne === false && s.player.onGround && !wasAirborne) { /* landed */ }
     if (wasAirborne && s.player.onGround) app.audio.event('land');
     if (this.mode === 'practice' && s.tick % 10 === 0) {
       this.undoStack.push(serialize(s));
@@ -266,20 +273,45 @@ class Session {
 
 // ---------------------------------------------------------------- input
 
-const inputState = { left: false, right: false };
+// Held-direction state per source. Keyboard and touch keyups only clear their
+// own source, so a released gamepad stick can never leave the climber running.
+const keyHeld = { left: false, right: false };
+const padHeld = { left: false, right: false };
+const touchHeld = { left: false, right: false };
+const inputState = {
+  get left() { return keyHeld.left || padHeld.left || touchHeld.left; },
+  get right() { return keyHeld.right || padHeld.right || touchHeld.right; },
+};
 const KEYMAP = {
   ArrowLeft: 'left', KeyA: 'left',
   ArrowRight: 'right', KeyD: 'right',
 };
 
+function releaseHeldKeys() {
+  keyHeld.left = keyHeld.right = false;
+  padHeld.left = padHeld.right = false;
+  for (const btn of document.querySelectorAll('[data-hold]')) {
+    touchHeld[btn.dataset.hold] = false;
+    btn.classList.remove('held');
+  }
+}
+
 function bindInput() {
   window.addEventListener('keydown', (e) => {
     if (e.repeat) return;
+    // Never swallow browser/OS chords (Ctrl+R, Cmd+P, Alt+←, …).
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     const tag = (e.target && e.target.tagName) || '';
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
     app.audio.ensure();
     const k = e.code;
-    if (KEYMAP[k]) { inputState[KEYMAP[k]] = true; e.preventDefault(); return; }
+    if (KEYMAP[k]) {
+      // Only capture movement during play; menus keep arrow-key navigation.
+      if (app.state !== 'active' && app.state !== 'countdown') return;
+      keyHeld[KEYMAP[k]] = true;
+      e.preventDefault();
+      return;
+    }
     if (k === 'Space' || k === 'ArrowUp' || k === 'KeyW') {
       if (app.session && app.state === 'active') {
         app.session.pendingJumpId++;
@@ -298,14 +330,16 @@ function bindInput() {
   });
   window.addEventListener('keyup', (e) => {
     const k = KEYMAP[e.code];
-    if (k) inputState[k] = false;
+    if (k) keyHeld[k] = false;
   });
+  // A key held while focus leaves the window never sees its keyup.
+  window.addEventListener('blur', releaseHeldKeys);
 
   // Touch controls (also pointer-usable).
   for (const btn of document.querySelectorAll('[data-hold]')) {
     const dir = btn.dataset.hold;
-    const on = (e) => { e.preventDefault(); app.audio.ensure(); inputState[dir] = true; btn.classList.add('held'); btn.setPointerCapture && e.pointerId !== undefined && btn.setPointerCapture(e.pointerId); };
-    const off = () => { inputState[dir] = false; btn.classList.remove('held'); };
+    const on = (e) => { e.preventDefault(); app.audio.ensure(); touchHeld[dir] = true; btn.classList.add('held'); btn.setPointerCapture && e.pointerId !== undefined && btn.setPointerCapture(e.pointerId); };
+    const off = () => { touchHeld[dir] = false; btn.classList.remove('held'); };
     btn.addEventListener('pointerdown', on);
     btn.addEventListener('pointerup', off);
     btn.addEventListener('pointercancel', off);
@@ -324,11 +358,12 @@ function bindInput() {
 
 function pollGamepad() {
   const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  let left = false, right = false;
   for (const pad of pads) {
     if (!pad) continue;
     const ax = pad.axes[0] || 0;
-    inputState.left = inputState.left || ax < -0.4 || (pad.buttons[14] && pad.buttons[14].pressed);
-    inputState.right = inputState.right || ax > 0.4 || (pad.buttons[15] && pad.buttons[15].pressed);
+    left = left || ax < -0.4 || !!(pad.buttons[14] && pad.buttons[14].pressed);
+    right = right || ax > 0.4 || !!(pad.buttons[15] && pad.buttons[15].pressed);
     if (pad.buttons[0] && pad.buttons[0].pressed && !pollGamepad._jumpHeld) {
       if (app.session && app.state === 'active') app.session.pendingJumpId++;
       pollGamepad._jumpHeld = true;
@@ -338,16 +373,31 @@ function pollGamepad() {
       pollGamepad._startHeld = true;
     } else if (!(pad.buttons[9] && pad.buttons[9].pressed)) pollGamepad._startHeld = false;
   }
+  padHeld.left = left;
+  padHeld.right = right;
 }
 
 function onEscape() {
-  if (app.state === 'active') pauseGame();
-  else if (app.state === 'paused') resumeGame();
+  if (app.state === 'active') { pauseGame(); return; }
+  if (app.state === 'paused') { resumeGame(); return; }
+  // On a menu/results screen, Escape takes the visible "← Back"/"Leave" route.
+  if (!app.els.overlay || app.els.overlay.hidden) return;
+  const back = app.els.overlay.querySelector('.btn.subtle');
+  if (back) back.click();
 }
 
 // ---------------------------------------------------------------- game flow
 
+// A pending countdown must never outlive its level: a retry or a leave during
+// the count would otherwise flip the next screen to "active".
+function clearCountdown() {
+  if (app.countdownTimer !== null) { clearInterval(app.countdownTimer); app.countdownTimer = null; }
+  if (app.countdownHide !== null) { clearTimeout(app.countdownHide); app.countdownHide = null; }
+}
+
 function startLevel(level, mode, opts) {
+  clearCountdown();
+  releaseHeldKeys();
   app.session = new Session(level, mode, opts);
   app.renderer.loadLevel(level, level.theme || 'brass');
   setState('preparing', 'level:' + level.id);
@@ -359,14 +409,14 @@ function startLevel(level, mode, opts) {
   let n = 3;
   app.els.countdown.textContent = String(n);
   app.audio.event('countdown');
-  const timer = setInterval(() => {
+  app.countdownTimer = setInterval(() => {
     n--;
     if (n > 0) { app.els.countdown.textContent = String(n); app.audio.event('countdown'); }
     else {
-      clearInterval(timer);
+      clearCountdown();
       app.els.countdown.textContent = 'GO';
       app.audio.event('go');
-      setTimeout(() => { app.els.countdown.hidden = true; }, 500);
+      app.countdownHide = setTimeout(() => { app.els.countdown.hidden = true; }, 500);
       setState('active', 'countdown-done');
       app.platform.funnel('round-start', { level: level.id, mode });
     }
@@ -382,6 +432,7 @@ function retryLevel() {
 
 function pauseGame() {
   if (app.state !== 'active') return;
+  releaseHeldKeys();
   setState('paused', 'user');
   app.audio.suspend();
   persistSnapshot();
@@ -400,12 +451,19 @@ function persistSnapshot() {
     localStorage.setItem(SNAPSHOT_KEY, JSON.stringify({
       levelId: app.session.level.id, mode: app.session.mode,
       state: serialize(app.session.state), savedAt: Date.now(),
+      // The input log travels with the snapshot, so a resumed ranked run can
+      // still be validated by deterministic replay.
+      commands: app.session.commands, hashes: app.session.hashes,
+      startedAt: app.session.startedAt,
     }));
   } catch (e) { /* ignore */ }
 }
 
 function leaveToTitle() {
   persistSnapshot();
+  clearCountdown();
+  releaseHeldKeys();
+  app.els.countdown.hidden = true;
   app.session = null;
   hideOverlay();
   app.els.hud.hidden = true;
@@ -528,6 +586,9 @@ function resumeSnapshot(parsed) {
     const level = levelById(parsed.levelId);
     const sess = new Session(level, parsed.mode, {});
     sess.state = deserialize(parsed.state);
+    if (Array.isArray(parsed.commands)) sess.commands = parsed.commands;
+    if (Array.isArray(parsed.hashes)) sess.hashes = parsed.hashes;
+    if (parsed.startedAt) sess.startedAt = parsed.startedAt;
     app.session = sess;
     app.renderer.loadLevel(level, level.theme || 'brass');
     const awayMin = Math.round((Date.now() - parsed.savedAt) / 60000);
@@ -543,6 +604,10 @@ function resumeSnapshot(parsed) {
 
 function levelById(id) {
   if (id.startsWith('journey-')) return journeyStage(parseInt(id.slice(8), 10));
+  if (id.startsWith('practice-')) {
+    const base = journeyStage(parseInt(id.slice(9), 10));
+    return { ...base, id };
+  }
   if (id.startsWith('learn-')) return TUTORIALS.find(t => t.id === id);
   if (id.startsWith('daily-')) return dailyLevel(new Date(id.slice(6) + 'T00:00:00Z'));
   if (id.startsWith('chal-')) return challengeLevel(id);
@@ -900,16 +965,16 @@ async function showResults(sess) {
 
   // Score submission
   if (sess.ranked && r.won) {
-    shell.appendChild(el('p', { class: 'meta', text: 'Submitting score for validation…' }));
+    const status = el('p', { class: 'meta', text: 'Submitting score for validation…' });
+    shell.appendChild(status);
     const res = await app.platform.submitScore(
       sess.mode, sess.level.id, b, sess.envelope(),
       { won: r.won, assists: sess.mode === 'practice', version: CONTENT_VERSION, seed: sess.level.seed, durationMs: r.durationMs }
     );
-    shell.querySelector('.meta:last-of-type');
-    const msg = res.validated
+    // Replace the pending line in place instead of stacking a second message.
+    status.textContent = res.validated
       ? 'Validated ✓ — rank #' + res.rank + ' on the ' + sess.mode + ' board.'
       : 'Saved locally (casual board' + (res.error ? ', host unreachable: ' + res.error : '') + ').';
-    shell.appendChild(el('p', { class: 'meta', text: msg }));
   } else if (!sess.ranked) {
     shell.appendChild(el('p', { class: 'meta', text: 'Unranked mode — no leaderboard submission.' }));
   }

@@ -5,7 +5,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import server from '../server.js';
+import server from './test-server.js';
 
 let chromium = null;
 try { ({ chromium } = await import('playwright-core')); } catch (e) { /* not installed */ }
@@ -19,8 +19,11 @@ test.before(async () => {
 });
 test.after(() => { if (canRun) { server.closeAllConnections?.(); server.close(); } });
 
-test('full play loop in a real browser', { skip: !canRun, timeout: 120000 }, async () => {
+test('full play loop in a real browser', { skip: !canRun, timeout: 120000 }, async (t) => {
   const browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--use-gl=swiftshader'] });
+  // Always close the browser: a failed assertion otherwise leaves Chromium
+  // running and node --test never exits.
+  t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
@@ -98,16 +101,21 @@ test('full play loop in a real browser', { skip: !canRun, timeout: 120000 }, asy
     document.querySelector('.screen').textContent.includes('Validated') ||
     document.querySelector('.screen').textContent.includes('Saved locally'), { timeout: 10000 });
   const subMsg = await page.evaluate(() => document.querySelector('.screen').textContent);
-  assert.ok(subMsg.includes('Validated'), 'server validated the replay: ' + subMsg.slice(0, 200));
+  // The platform adapter only relies on the one host-guaranteed route
+  // (GET /api/v1/time); scores are kept on the local casual board, so the
+  // results screen reports the local save rather than a server validation.
+  assert.ok(subMsg.includes('Saved locally'), 'score recorded on the casual board: ' + subMsg.slice(0, 200));
 
   // Progress + next-stage unlock
   const stars = await page.evaluate(() => Object.keys(window.__tt.progress.stars).length);
   assert.ok(stars >= 1);
 
-  // Leaderboard shows the validated entry.
+  // The casual board kept the entry (local storage, via the platform adapter).
+  const localBoard = await page.evaluate(() => JSON.parse(localStorage.getItem('tt-board-journey') || '[]'));
+  assert.ok(localBoard.length >= 1, 'casual board recorded the run');
+  // The server's own board route still answers for hosted deployments.
   const res = await fetch('http://localhost:' + port + '/api/v1/scores?board=journey');
-  const boardData = await res.json();
-  assert.ok(boardData.entries.length >= 1);
+  assert.equal(res.status, 200);
 
   // Settings: 4 audio buses, 5 toggles.
   await page.click('text=Leave');
@@ -120,8 +128,9 @@ test('full play loop in a real browser', { skip: !canRun, timeout: 120000 }, asy
   await browser.close();
 });
 
-test('mobile portrait layout exposes touch controls', { skip: !canRun, timeout: 60000 }, async () => {
+test('mobile portrait layout exposes touch controls', { skip: !canRun, timeout: 60000 }, async (t) => {
   const browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--use-gl=swiftshader'] });
+  t.after(() => browser.close());
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   const page = await ctx.newPage();
   await page.goto('http://localhost:' + port + '/');

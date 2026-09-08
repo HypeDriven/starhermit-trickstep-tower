@@ -12,7 +12,9 @@ export const MAX_FALL = 18;
 export const PLAYER_W = 0.6;
 export const PLAYER_H = 0.9;
 
-export const SCHEMA_VERSION = 1;
+// 2: below-the-map is open air (falling off the tower is a real fall), so
+// states and replays recorded under version 1 no longer resolve identically.
+export const SCHEMA_VERSION = 2;
 
 // ---------------------------------------------------------------- RNG
 
@@ -162,7 +164,11 @@ export function isVanishSolid(state, tileIndex, tick) {
 }
 
 function tileAt(state, tx, ty) {
-  if (tx < 0 || tx >= state.w || ty < 0 || ty >= state.h) return TILE.SOLID; // walls
+  // Sides and ceiling are walls; below the map is open air so that falling off
+  // the tower actually falls — otherwise the grid floor is an invisible ledge
+  // the climber can stand and walk on.
+  if (ty >= state.h) return TILE.EMPTY;
+  if (tx < 0 || tx >= state.w || ty < 0) return TILE.SOLID; // walls
   return state.tiles[ty * state.w + tx];
 }
 

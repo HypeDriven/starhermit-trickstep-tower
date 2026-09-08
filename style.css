@@ -74,7 +74,8 @@ body.high-contrast { --panel: #000; --panel-2: #111; --ink: #fff; --ink-dim: #dd
 
 #hud {
   position: absolute;
-  top: calc(18px + var(--sat));
+  /* Clears the fixed wordmark bar above it (≈26px tall) instead of overlapping it. */
+  top: calc(28px + var(--sat));
   left: calc(10px + var(--sal));
   right: calc(10px + var(--sar));
   z-index: 4;
@@ -329,7 +330,7 @@ body[data-game-state="results"] #touch-controls { display: none; }
 
 /* Landscape mobile: compact status rail, keep 44px targets. */
 @media (max-height: 500px) and (orientation: landscape) {
-  #hud { top: calc(4px + var(--sat)); }
+  #hud { top: calc(24px + var(--sat)); }
   .hud-group { padding: 3px 8px; font-size: 0.85em; }
   .touch-btn { width: 52px; height: 52px; }
   .touch-btn.jump { width: 68px; height: 68px; }

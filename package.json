@@ -6,12 +6,13 @@
   "main": "server.js",
   "scripts": {
     "test": "node --test tests/*.test.js",
+    "test:e2e": "node tests/e2e.mjs",
     "validate": "node tools/validate.js",
     "start": "node server.js"
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "SEE LICENSE IN LICENSE.md",
   "dependencies": {
     "three": "^0.185.1"
   },

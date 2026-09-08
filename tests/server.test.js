@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import server from '../server.js';
+import server from './test-server.js';
 import { SCHEMA_VERSION, createState, step, stateHash, scoreBreakdown } from '../src/rules.js';
 import { journeyStage } from '../src/content.js';
 

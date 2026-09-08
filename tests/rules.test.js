@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {
   TICK_MS, SCHEMA_VERSION, makeRng, hashString, parseMap, createState, step,
   legalActions, isTerminal, terminalReason, scoreBreakdown, compareResults,
-  serialize, deserialize, stateHash, replay, simulate, TILE,
+  serialize, deserialize, stateHash, replay, simulate, TILE, PLAYER_H,
 } from '../src/rules.js';
 import { TUTORIALS, journeyStage, validateLevel, validateAll, dailyLevel, challengeLevel } from '../src/content.js';
 
@@ -184,8 +184,9 @@ function solve(def, maxTicks) {
     let jump = 0;
     if (s.player.onGround) {
       const aheadX = Math.floor(s.player.x + 0.9);
-      const feetY = Math.floor(s.player.y + 0.5);
-      if (trap(aheadX, feetY) || trap(aheadX + 1, feetY)) jump = 1;
+      // The tile being walked on is the one just under the feet.
+      const floorY = Math.floor(s.player.y + PLAYER_H + 0.1);
+      if (trap(aheadX, floorY) || trap(aheadX + 1, floorY)) jump = 1;
       if (s.player.x - lastX < 0.005) stuck++; else stuck = 0;
       if (stuck >= 3) jump = 1;
     }
