@@ -167,6 +167,7 @@ class Session {
     this.over = false;
     this.result = null;
     this.stepCounter = 0;
+    this.stepAcc = 0;
     this.startedAt = Date.now();
     this.awaySummary = null;
   }
@@ -202,6 +203,13 @@ class Session {
     }
     for (const ev of events) this.onEvent(ev);
     if (wasAirborne && s.player.onGround) app.audio.event('land');
+    // Footstep ticks while walking on the ground (one per tile travelled).
+    if (s.player.onGround && !s.over && Math.abs(s.player.vx) > 0) {
+      this.stepAcc += Math.abs(s.player.vx) * (TICK_MS / 1000);
+      if (this.stepAcc >= 1) { this.stepAcc = 0; app.audio.event('step'); }
+    } else {
+      this.stepAcc = 0;
+    }
     if (this.mode === 'practice' && s.tick % 10 === 0) {
       this.undoStack.push(serialize(s));
       if (this.undoStack.length > 40) this.undoStack.shift();
