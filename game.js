@@ -101,7 +101,15 @@ const app = {
   countdownTimer: null,
   countdownHide: null,
 };
-app.platform.playerName = app.settings.name || localStorage.getItem('tt-name') || 'Guest';
+
+// Where the sync indicator appears (HUD + profile screen).
+const SYNC_LABELS = {
+  synced: 'Cloud save: synced',
+  saving: 'Cloud save: saving…',
+  offline: 'Cloud save: local only',
+  error: 'Cloud save: sync failed — will retry',
+};
+function syncLabel() { return SYNC_LABELS[app.platform.syncStatus] || ''; }
 
 function setState(next, reason) {
   const prev = app.state;
@@ -528,6 +536,7 @@ function updateHud() {
     app.els.hudLimit.textContent = '';
   }
   app.els.boardDesc.textContent = app.renderer.describeState(st, s.level);
+  app.els.hudSync.textContent = syncLabel();
 }
 
 // ---------------------------------------------------------------- screens
@@ -758,9 +767,11 @@ function showChallenges() {
 async function showLeaderboards(board) {
   setState('mode-select', 'scores');
   board = board || 'daily';
-  const shell = screenShell('Score Chase', app.platform.online
-    ? 'Replay-validated global boards. Friends filter uses your local friends list.'
-    : 'Offline — showing local casual board (scores not server-validated).');
+  const shell = screenShell('Score Chase', app.platform.hosted
+    ? 'Replay-validated board from the game server; the platform leaderboard is read-only.'
+    : app.platform.online
+      ? 'Replay-validated global boards. Friends filter uses your local friends list.'
+      : 'Offline — showing local casual board (scores not server-validated).');
   const tabs = el('div', { class: 'btn-row', role: 'tablist' });
   for (const b of ['daily', 'journey', 'challenge']) {
     tabs.appendChild(el('button', {
@@ -779,6 +790,7 @@ async function showLeaderboards(board) {
     }));
   }
   shell.appendChild(list);
+  if (data.validated) shell.appendChild(el('p', { class: 'meta', text: 'Replay-validated board.' }));
   if (data.casual) shell.appendChild(el('p', { class: 'meta', text: 'Casual board — validation unavailable; plausibility checks only.' }));
   shell.appendChild(el('button', { class: 'btn subtle', text: '← Back', onclick: showModeSelect }));
   showOverlay(shell);
@@ -858,18 +870,27 @@ function applyA11yClasses() {
 // ---- profile
 
 function showProfile() {
-  const shell = screenShell('Profile', app.platform.online ? 'Connected to the StarHermit host.' : 'Guest mode — progress is stored locally.');
-  const nameInput = el('input', { type: 'text', value: app.platform.playerName, maxlength: '24', 'aria-label': 'Display name' });
-  shell.appendChild(labeled('Display name', nameInput));
-  shell.appendChild(el('button', {
-    class: 'btn', text: 'Save name',
-    onclick: () => {
-      app.platform.playerName = nameInput.value.trim() || 'Guest';
-      localStorage.setItem('tt-name', app.platform.playerName);
-      announce('Name saved.');
-      showTitle();
-    },
-  }));
+  const hosted = app.platform.hosted;
+  const shell = screenShell('Profile', hosted
+    ? 'Signed in to StarHermit as “' + app.platform.playerName + '”.'
+    : app.platform.online ? 'Connected to the StarHermit host.' : 'Guest mode — progress is stored locally.');
+  if (hosted) {
+    // The name comes from the StarHermit profile; there is nothing to edit.
+    shell.appendChild(el('p', { class: 'meta', text: 'Display name comes from your StarHermit profile.' }));
+  } else {
+    const nameInput = el('input', { type: 'text', value: app.platform.playerName, maxlength: '24', 'aria-label': 'Display name' });
+    shell.appendChild(labeled('Display name', nameInput));
+    shell.appendChild(el('button', {
+      class: 'btn', text: 'Save name',
+      onclick: () => {
+        app.platform.playerName = nameInput.value.trim() || 'Guest';
+        localStorage.setItem('tt-name', app.platform.playerName);
+        announce('Name saved.');
+        showTitle();
+      },
+    }));
+  }
+  shell.appendChild(el('p', { class: 'meta', text: syncLabel() }));
   const p = app.progress;
   shell.appendChild(el('p', { text: 'Stages cleared: ' + Object.keys(p.stars).length + ' / 40 · Total clears: ' + p.clears + ' · Daily streak: ' + p.streak.count }));
   const ach = el('ul', { class: 'achievements' });
@@ -1070,7 +1091,8 @@ function buildShell() {
     '    <span>Time <b id="hud-time">0.0s</b></span>' +
     '    <span id="hud-limit"></span>' +
     '  </div>' +
-    '  <div class="hud-group"><button id="btn-pause" class="btn small">Pause (Esc)</button>' +
+    '  <div class="hud-group"><span id="hud-sync" class="sync-status"></span>' +
+    '  <button id="btn-pause" class="btn small">Pause (Esc)</button>' +
     '  <button id="btn-undo" class="btn small" hidden>Undo (U)</button></div>' +
     '</div>';
   const overlay = el('div', { id: 'overlay', role: 'dialog', 'aria-modal': 'false' });
@@ -1106,6 +1128,7 @@ function buildShell() {
     hudDeaths: hud.querySelector('#hud-deaths'),
     hudTime: hud.querySelector('#hud-time'),
     hudLimit: hud.querySelector('#hud-limit'),
+    hudSync: hud.querySelector('#hud-sync'),
     undoBtn: hud.querySelector('#btn-undo'),
   };
   hud.querySelector('#btn-pause').addEventListener('click', () => (app.state === 'paused' ? resumeGame() : pauseGame()));
@@ -1146,6 +1169,12 @@ async function boot() {
   window.addEventListener('beforeunload', persistSnapshot);
   bindInput();
   await app.platform.init();
+  // Remote-preferred cloud load: when the platform slot held a newer save,
+  // adopt it over the local cache before the first screen renders.
+  if (app.platform.cloudDoc && app.platform.cloudDoc.progress && typeof app.platform.cloudDoc.progress === 'object') {
+    app.progress = Object.assign(structuredClone(DEFAULT_PROGRESS), app.platform.cloudDoc.progress);
+    store(PROGRESS_KEY, app.progress);
+  }
   // Idle scene behind the title screen.
   app.renderer.loadLevel(journeyStage(0), THEMES[0].id);
   requestAnimationFrame(frame);

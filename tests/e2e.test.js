@@ -101,9 +101,9 @@ test('full play loop in a real browser', { skip: !canRun, timeout: 120000 }, asy
     document.querySelector('.screen').textContent.includes('Validated') ||
     document.querySelector('.screen').textContent.includes('Saved locally'), { timeout: 10000 });
   const subMsg = await page.evaluate(() => document.querySelector('.screen').textContent);
-  // The platform adapter only relies on the one host-guaranteed route
-  // (GET /api/v1/time); scores are kept on the local casual board, so the
-  // results screen reports the local save rather than a server validation.
+  // Without a launch token the adapter runs unhosted: score submission stays
+  // on the local casual board (hosted play would submit to the game's own
+  // server for replay validation), so the results screen reports the local save.
   assert.ok(subMsg.includes('Saved locally'), 'score recorded on the casual board: ' + subMsg.slice(0, 200));
 
   // Progress + next-stage unlock
