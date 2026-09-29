@@ -11,7 +11,9 @@ import {
   CONTENT_VERSION, THEMES, TUTORIALS, JOURNEY_COUNT, journeyStage, dailyLevel,
   CHALLENGES, challengeLevel,
 } from './src/content.js';
-import { Renderer, QUALITY_TIERS } from './src/client/render.js';
+import { Renderer } from './src/client/render.js';
+import { PRESETS, CATEGORIES, DEFAULT_GFX, presetTier, choosePreset, setOverride } from './src/client/gfx.js';
+import { gfxStrings } from './src/client/gfx-i18n.js';
 import { AudioEngine, BUS_NAMES } from './src/client/audio.js';
 import { Platform } from './src/client/platform.js';
 
@@ -42,7 +44,7 @@ function unchecksummed(raw) {
 const DEFAULT_SETTINGS = {
   v: 1,
   volumes: { music: 0.45, effects: 0.8, ambience: 0.35, voice: 0.6 },
-  graphics: 'med',
+  gfx: structuredClone(DEFAULT_GFX),
   reducedMotion: false,
   highContrast: false,
   largeText: false,
@@ -798,10 +800,42 @@ async function showLeaderboards(board) {
 
 // ---- settings
 
-function showSettings(returnTo) {
+function showSettings(returnTo, tab) {
   const s = app.settings;
+  const tr = gfxStrings((navigator && navigator.language) || 'en-US');
   const shell = screenShell('Settings', 'Saved locally and synced to the cloud when online.');
-  const wrap = el('div', { class: 'form' });
+  const back = () => (returnTo === 'pause' ? showPause() : showTitle());
+  // Tabs: General (audio, palette, accessibility) and Graphics.
+  const tabs = el('div', { class: 'settings-tabs', role: 'tablist', 'aria-label': 'Settings sections' });
+  const current = tab === 'graphics' ? 'graphics' : 'general';
+  for (const [id, label] of [['general', tr('tabGeneral')], ['graphics', tr('tabGraphics')]]) {
+    const b = el('button', {
+      class: 'btn tab' + (id === current ? ' active' : ''), role: 'tab', id: 'settings-tab-' + id,
+      'data-settings-tab': id, 'aria-selected': id === current ? 'true' : 'false',
+      'aria-controls': 'settings-panel', tabindex: id === current ? '0' : '-1', text: label,
+      onclick: () => { if (id !== current) { showSettings(returnTo, id); const t = document.getElementById('settings-tab-' + id); if (t) t.focus(); } },
+    });
+    b.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        const other = id === 'general' ? 'graphics' : 'general';
+        showSettings(returnTo, other);
+        const t = document.getElementById('settings-tab-' + other);
+        if (t) t.focus();
+      }
+    });
+    tabs.appendChild(b);
+  }
+  shell.appendChild(tabs);
+  const wrap = el('div', { class: 'form', id: 'settings-panel', role: 'tabpanel', 'aria-labelledby': 'settings-tab-' + current });
+  shell.appendChild(wrap);
+  shell.appendChild(el('button', { class: 'btn subtle', text: '← Back', onclick: back }));
+
+  if (current === 'graphics') {
+    buildGraphicsPanel(wrap, tr);
+    showOverlay(shell, '#settings-tab-graphics');
+    return;
+  }
 
   const h3a = el('h3', { text: 'Audio' });
   wrap.appendChild(h3a);
@@ -814,11 +848,7 @@ function showSettings(returnTo) {
     wrap.appendChild(row);
   }
 
-  wrap.appendChild(el('h3', { text: 'Graphics' }));
-  const tierSel = el('select', { 'aria-label': 'Graphics quality tier' });
-  for (const t of Object.keys(QUALITY_TIERS)) tierSel.appendChild(el('option', { value: t, text: t, selected: s.graphics === t ? 'selected' : null }));
-  tierSel.addEventListener('change', () => { s.graphics = tierSel.value; app.renderer.setQuality(tierSel.value); saveSettings(); });
-  wrap.appendChild(labeled('Quality tier', tierSel));
+  wrap.appendChild(el('h3', { text: 'Display' }));
   const palSel = el('select', { 'aria-label': 'Color palette' });
   for (const p of ['default', 'deuteranopia', 'protanopia', 'tritanopia', 'mono']) palSel.appendChild(el('option', { value: p, text: p, selected: s.palette === p ? 'selected' : null }));
   palSel.addEventListener('change', () => { s.palette = palSel.value; applyA11yClasses(); saveSettings(); });
@@ -839,9 +869,97 @@ function showSettings(returnTo) {
     wrap.appendChild(labeled(label, cb));
   }
   wrap.appendChild(el('button', { class: 'btn', text: 'Replay tutorials', onclick: () => showLearn() }));
-  shell.appendChild(wrap);
-  shell.appendChild(el('button', { class: 'btn subtle', text: '← Back', onclick: () => (returnTo === 'pause' ? showPause() : showTitle()) }));
   showOverlay(shell);
+}
+
+// ---- graphics panel (inside Settings → Graphics)
+
+function currentGfx() {
+  return Object.assign(structuredClone(DEFAULT_GFX), app.settings.gfx || {});
+}
+
+function applyGfx(next) {
+  app.settings.gfx = next;
+  app.renderer.setGraphicsSettings(next);
+  saveSettings();
+}
+
+function gfxRow(label, control, id) {
+  const row = el('div', { class: 'gfx-row' });
+  row.appendChild(el('label', { for: id, text: label }));
+  row.appendChild(control);
+  return row;
+}
+
+function buildGraphicsPanel(wrap, tr) {
+  wrap.innerHTML = '';
+  wrap.classList.add('gfx-panel');
+  const g = currentGfx();
+  const info = app.renderer.graphicsInfo();
+  const presetName = (p) => tr('preset_' + p);
+  const rebuild = () => {
+    const focusId = document.activeElement && document.activeElement.id;
+    buildGraphicsPanel(wrap, tr);
+    const f = focusId && document.getElementById(focusId);
+    if (f) f.focus();
+  };
+  wrap.appendChild(el('p', { class: 'meta', text: tr('intro') }));
+
+  // Quality preset.
+  const q = el('select', { id: 'gfx-preset', 'data-gfx': 'preset' });
+  q.appendChild(el('option', { value: 'auto', text: tr('auto', { tier: presetName(info.detected) }), selected: PRESETS.includes(g.preset) ? null : 'selected' }));
+  for (const p of PRESETS) q.appendChild(el('option', { value: p, text: presetName(p), selected: g.preset === p ? 'selected' : null }));
+  q.addEventListener('change', () => { applyGfx(choosePreset(currentGfx(), q.value)); rebuild(); });
+  wrap.appendChild(gfxRow(tr('quality'), q, 'gfx-preset'));
+
+  // Render scale 50–200 %.
+  const pct = Math.round((Number(g.render_scale) || 1) * 100);
+  const scaleOut = el('output', { id: 'gfx-scale-value', for: 'gfx-scale', text: pct + '%' });
+  const scale = el('input', { type: 'range', id: 'gfx-scale', 'data-gfx': 'render_scale', min: '50', max: '200', step: '5', value: String(pct) });
+  scale.addEventListener('input', () => { scaleOut.textContent = scale.value + '%'; });
+  scale.addEventListener('change', () => {
+    applyGfx(Object.assign(currentGfx(), { render_scale: Number(scale.value) / 100 }));
+    refreshGfxSummary(tr);
+  });
+  const scaleBox = el('span', { class: 'gfx-scale' }, [scale, scaleOut]);
+  wrap.appendChild(gfxRow(tr('renderScale'), scaleBox, 'gfx-scale'));
+
+  // One select per category; "" = follow the preset.
+  const resolvedPreset = info.resolved.preset;
+  for (const [cat, tiers] of Object.entries(CATEGORIES)) {
+    const sel = el('select', { id: 'gfx-' + cat, 'data-gfx': cat });
+    const ov = g.overrides && g.overrides[cat];
+    sel.appendChild(el('option', { value: '', text: tr('fromPreset', { tier: tr('tier_' + presetTier(resolvedPreset, cat)) }), selected: ov ? null : 'selected' }));
+    for (const t of tiers) sel.appendChild(el('option', { value: t, text: tr('tier_' + t), selected: ov === t ? 'selected' : null }));
+    sel.addEventListener('change', () => { applyGfx(setOverride(currentGfx(), cat, sel.value)); refreshGfxSummary(tr); });
+    wrap.appendChild(gfxRow(tr('cat_' + cat), sel, 'gfx-' + cat));
+  }
+
+  for (const [key, id, label, on] of [['adaptive', 'gfx-adaptive', tr('adaptive'), g.adaptive !== false], ['show_fps', 'gfx-fps', tr('showFps'), !!g.show_fps]]) {
+    const cb = el('input', { type: 'checkbox', id, 'data-gfx': key });
+    cb.checked = on;
+    cb.addEventListener('change', () => { applyGfx(Object.assign(currentGfx(), { [key]: cb.checked })); refreshGfxSummary(tr); });
+    wrap.appendChild(gfxRow(label, cb, id));
+  }
+
+  wrap.appendChild(el('p', { class: 'meta gfx-summary', id: 'gfx-summary', 'aria-live': 'polite' }));
+  wrap.appendChild(el('p', { class: 'meta gfx-note', id: 'gfx-post-note', hidden: 'hidden', text: tr('postUnavailable') }));
+  refreshGfxSummary(tr);
+}
+
+// The canvas size/post chain update on the next frame, so read back after it.
+function refreshGfxSummary(tr) {
+  const write = () => {
+    const out = document.getElementById('gfx-summary');
+    if (!out || !app.renderer) return;
+    const info = app.renderer.graphicsInfo();
+    out.textContent = info.gpu + ' · ' + info.summary;
+    out.dataset.preset = info.resolved.preset;
+    const note = document.getElementById('gfx-post-note');
+    if (note) note.hidden = !info.postFailed;
+  };
+  write();
+  requestAnimationFrame(() => requestAnimationFrame(write));
 }
 
 function labeled(text, control) {

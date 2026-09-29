@@ -113,6 +113,52 @@ function readApp(page) {
 const waitState = (page, name, timeout = 20000) =>
   page.waitForFunction((n) => window.__tt?.state === n, name, { timeout });
 
+// ---------- graphics settings ----------
+async function openGraphics(page) {
+  await page.click('#overlay button:has-text("Settings")');
+  await page.click('#overlay [data-settings-tab="graphics"]');
+  await page.waitForSelector('#gfx-preset', { state: 'visible' });
+}
+
+async function graphicsPass(page, name) {
+  await openGraphics(page);
+  const autoLabel = await page.textContent('#gfx-preset option[value="auto"]');
+  if (!/\(.+\)/.test(autoLabel)) throw new Error(`auto option lacks detected tier: "${autoLabel}"`);
+  const rows = await page.locator('#overlay .gfx-row').count();
+  if (rows < 12) throw new Error(`expected >=12 graphics rows, got ${rows}`);
+  // Panel fits: no horizontal overflow at this viewport.
+  const overflow = await page.evaluate(() => {
+    const sc = document.querySelector('#overlay .screen');
+    return sc.scrollWidth - sc.clientWidth;
+  });
+  if (overflow > 1) throw new Error(`graphics panel overflows horizontally by ${overflow}px`);
+  const preset = () => page.evaluate(() => document.body.dataset.gfxPreset);
+  for (const p of ['low', 'ultra', 'high']) {
+    await page.selectOption('#gfx-preset', p);
+    await page.waitForFunction((v) => document.body.dataset.gfxPreset === v && document.getElementById('gfx-summary').dataset.preset === v, p, { timeout: 8000 });
+    await page.waitForTimeout(400); // let a few frames render with the new chain
+  }
+  await page.screenshot({ path: SHOT('graphics', name) });
+  // One override: bloom off, while the preset stays High.
+  await page.selectOption('#gfx-bloom', 'off');
+  await page.waitForFunction(() => !/bloom/.test(document.getElementById('gfx-summary').textContent));
+  if ((await preset()) !== 'high') throw new Error('override changed the preset');
+  // Survives a reload.
+  await page.reload({ waitUntil: 'load' });
+  await waitState(page, 'title', 15000);
+  if ((await preset()) !== 'high') throw new Error(`preset not persisted (got ${await preset()})`);
+  await openGraphics(page);
+  const sel = await page.inputValue('#gfx-preset');
+  const bloom = await page.inputValue('#gfx-bloom');
+  if (sel !== 'high' || bloom !== 'off') throw new Error(`graphics not persisted: preset=${sel} bloom=${bloom}`);
+  // Choosing a preset clears overrides; restore Auto for the rest of the run.
+  await page.selectOption('#gfx-preset', 'auto');
+  if ((await page.inputValue('#gfx-bloom')) !== '') throw new Error('preset change did not clear overrides');
+  await page.click('#overlay button:has-text("← Back")');
+  await waitState(page, 'title', 8000);
+  ok(`${name}: Graphics panel — Low/Ultra/High applied live, bloom override, persisted across reload`);
+}
+
 // ---------- one full pass ----------
 async function runPass(browser, name, ctxOpts, { full }) {
   const errors = [];
@@ -120,10 +166,10 @@ async function runPass(browser, name, ctxOpts, { full }) {
   const page = await context.newPage();
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
   page.on('console', (m) => {
-    if (m.type() !== 'error' || browserNoise.test(m.text())) return;
+    if ((m.type() !== 'error' && m.type() !== 'warning') || browserNoise.test(m.text())) return;
     const url = m.location()?.url || '';
     if (/Failed to load resource/.test(m.text()) && /\/api\/|\/favicon/.test(url)) return;
-    errors.push(`console: ${m.text()}`);
+    errors.push(`console ${m.type()}: ${m.text()}`);
   });
   page.on('response', (r) => {
     const p = r.url();
@@ -137,6 +183,10 @@ async function runPass(browser, name, ctxOpts, { full }) {
     await page.waitForSelector('#overlay .btn.primary.big', { state: 'visible', timeout: 15000 });
     await page.screenshot({ path: SHOT('title', name) });
     ok(`${name}: title screen visible ("${(await page.textContent('#overlay h2')).trim()}")`);
+
+    // Graphics settings through the visible panel: presets, an override,
+    // live application and persistence across a reload.
+    await graphicsPass(page, name);
 
     if (full) {
       // Settings: open from title, count the 4 audio sliders + 5 toggles, close.

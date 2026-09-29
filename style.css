@@ -347,3 +347,38 @@ body.reduced-motion * { animation: none !important; transition: none !important;
   background: var(--panel);
   border-radius: var(--radius);
 }
+
+/* ---------------- settings tabs + graphics panel ---------------- */
+
+.settings-tabs { display: flex; gap: 4px; margin: 4px 0 8px; border-bottom: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); }
+.settings-tabs .btn.tab { margin: 0 0 -1px; border-radius: var(--radius) var(--radius) 0 0; white-space: nowrap; }
+.settings-tabs .btn.tab.active { background: var(--accent); color: #201808; font-weight: 700; }
+.gfx-panel { gap: 6px; }
+.gfx-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 44px; }
+.gfx-row > label { flex: 1 1 auto; min-width: 0; }
+.gfx-row select { flex: 0 0 auto; width: min(280px, 66%); }
+.gfx-row input[type="checkbox"] { width: 24px; height: 24px; accent-color: var(--accent); }
+.gfx-scale { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; width: min(280px, 66%); min-width: 0; white-space: nowrap; }
+.gfx-scale input { flex: 1 1 auto; min-width: 0; min-height: 44px; accent-color: var(--accent); }
+.gfx-scale output { width: 4.2em; text-align: right; font-variant-numeric: tabular-nums; }
+.gfx-summary { overflow-wrap: anywhere; }
+.gfx-note { color: var(--danger); }
+
+#fps-meter {
+  position: fixed;
+  left: calc(8px + var(--sal));
+  bottom: calc(8px + var(--sab));
+  z-index: 20;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(8, 10, 18, 0.7);
+  color: var(--ink);
+  font: 12px/1.4 ui-monospace, monospace;
+  pointer-events: none;
+}
+@media (pointer: coarse) {
+  /* Sit above the touch tray so it never covers the move pad. */
+  body[data-game-state="active"] #fps-meter,
+  body[data-game-state="countdown"] #fps-meter,
+  body[data-game-state="paused"] #fps-meter { bottom: calc(96px + var(--sab)); }
+}
