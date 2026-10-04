@@ -193,13 +193,16 @@ No module may mutate rules state except through a validated command. Rendering c
 
 ### Packaging and launch
 - Ship a browser distribution with `starhermit.txt` at its root, `name=Trickstep Tower`, and `launch=index.html`. Keep source files, secrets, design documents, and source maps outside the uploaded distribution.
-- Read the game scope from the short-lived launch token rather than hard-coding a slug. Use same-origin `/api` and `/ws` routes when hosted. Refresh the launch token via `POST /api/v1/games/{scope}/launch-token` every 45 minutes; never persist access or launch tokens in local storage.
-- Synchronize countdowns and daily boundaries with `GET /api/v1/time` using round-trip-adjusted offset. Treat rate limits and structured `{"error":"..."}` responses as recoverable UI states.
+- `index.html` loads the canonical `starhermit-sdk.js` (unmodified copy of `tools/starhermit-sdk.js`) and calls `StarHermit.init()` before the game module runs. The SDK reads `#game_token=` (library/invite launch, with optional `session_id`) or `#access_token=` (direct sign-in return), strips it from the URL, takes the slug from the token's `game_scope` claim, and renews the launch token before expiry. Tokens never touch localStorage.
+- `src/client/platform.js` wraps the SDK. Without a token it makes no network calls at all and the game runs fully local. When renewal is refused the game shows a "signed out" toast, re-offers sign-in and keeps playing locally.
+- Hosted, the clock syncs once with `GET /api/v1/time` (round-trip adjusted); failures leave the local clock in place.
 
 ### Identity, profile, presence, and preferences
-- Support guest practice locally, then offer account sign-in for durable progress. Use the profile display name and avatar only where identity is useful and honor profile privacy; the game calls no per-game presence endpoint (the wiki exposes none to launch tokens).
-- Store accessibility, audio, graphics tier, tutorial completion, camera preference, and rules options through per-game settings. Declare desktop action bindings and read player overrides; touch mappings remain responsive UI controls.
-- Cloud-save progression as a versioned, checksummed document. Resolve conflicts by preserving both snapshots and asking the player when neither is a strict descendant. Never place credentials or private chat in saves.
+- Guests play locally under an editable local name. On `*.starhermit.com` without a token the title screen shows **Sign in with StarHermit** (`StarHermit.signIn()`); it is hidden when signed in and when running locally.
+- Signed in, the display name is the profile nickname (fallback `Player <id prefix>`); the Profile screen shows it read-only. The title screen shows **Invite a friend**, which copies `StarHermit.inviteLink()` to the clipboard and confirms with a toast.
+- Preferences (volumes, graphics, reduced motion, high contrast, large text, left-handed layout, haptics, palette, camera, tutorials seen) are kept in localStorage and mirrored to the per-game settings KV with `patchSettings` on change; on start the platform values win over local ones.
+- Keyboard actions are declared as `control.*` lines in `starhermit.txt` (left, right, jump, pause, retry, undo, camera). At start the game resolves them with `StarHermit.loadBindings`, routes `keydown` by `event.code` through them, and Help shows the effective keys. Touch and gamepad mappings are unaffected.
+- Progress (`{ progress, savedAt }`) lives in a checksummed localStorage document and is cloud-saved to the `game:<slug>` slot: loaded remote-first on start (newer `savedAt` wins), saved after every round (debounced), flushed on `pagehide`/hidden.
 
 ### Discovery, activity, and social layer
 - Start and end launch activity so playtime is accurate. Surface entitlement or catalog state only in host-owned chrome; the game itself must remain playable without promotional interruption.
@@ -208,6 +211,7 @@ No module may mutate rules state except through a validated command. Rendering c
 
 ### Achievements and leaderboards
 - Declare a small static achievement set: first completion, mechanic mastery, a sustained streak, a difficult content milestone, and an accessibility-neutral long-term goal. Keys are stable, lowercase identifiers; unlocks are idempotent.
+- Score Chase reads the game server's replay-validated board when it answers; otherwise it reads the read-only platform leaderboard (`StarHermit.leaderboard`); offline it shows the local casual board. The client never submits platform scores or achievements; achievements stay in the cloud-saved progress document.
 - Provide global and friends-filtered boards for the primary metric plus a fair daily/weekly board. Include ruleset, content version, seed, assists, and duration with every submission; reject impossible or stale-version scores.
 - For globally competitive boards, validate score claims through a lightweight authoritative script using replayable input logs and deterministic seeds. If validation is unavailable, label the board casual and apply plausibility/rate checks.
 

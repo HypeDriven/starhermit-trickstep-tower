@@ -382,3 +382,22 @@ body.reduced-motion * { animation: none !important; transition: none !important;
   body[data-game-state="countdown"] #fps-meter,
   body[data-game-state="paused"] #fps-meter { bottom: calc(96px + var(--sab)); }
 }
+
+/* StarHermit toast (invite link copied, signed out). */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  max-width: min(92vw, 520px);
+  padding: 10px 16px;
+  background: var(--panel-2);
+  color: var(--ink);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+  z-index: 50;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+.toast[hidden] { display: none; }

@@ -16,6 +16,7 @@ import { PRESETS, CATEGORIES, DEFAULT_GFX, presetTier, choosePreset, setOverride
 import { gfxStrings } from './src/client/gfx-i18n.js';
 import { AudioEngine, BUS_NAMES } from './src/client/audio.js';
 import { Platform } from './src/client/platform.js';
+import { platformStrings } from './src/client/platform-i18n.js';
 
 // ---------------------------------------------------------------- persistence
 
@@ -300,10 +301,31 @@ const inputState = {
   get left() { return keyHeld.left || padHeld.left || touchHeld.left; },
   get right() { return keyHeld.right || padHeld.right || touchHeld.right; },
 };
-const KEYMAP = {
-  ArrowLeft: 'left', KeyA: 'left',
-  ArrowRight: 'right', KeyD: 'right',
+// Keyboard actions (declared as control.* in starhermit.txt). Hosted players
+// may override them on StarHermit; app.bindings holds the effective codes.
+const DEFAULT_BINDINGS = {
+  left: ['ArrowLeft', 'KeyA'],
+  right: ['ArrowRight', 'KeyD'],
+  jump: ['Space', 'ArrowUp', 'KeyW'],
+  pause: ['Escape', 'KeyP'],
+  retry: ['KeyR'],
+  undo: ['KeyU'],
+  camera: ['KeyC'],
 };
+let codeAction = {};
+function setBindings(bindings) {
+  app.bindings = bindings;
+  codeAction = {};
+  for (const [action, codes] of Object.entries(bindings)) for (const c of codes) codeAction[c] = action;
+}
+const KEY_GLYPHS = { ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓', Escape: 'Esc' };
+function keyLabel(code) {
+  if (KEY_GLYPHS[code]) return KEY_GLYPHS[code];
+  if (/^Key[A-Z]$/.test(code)) return code.slice(3);
+  if (/^Digit\d$/.test(code)) return code.slice(5);
+  return code;
+}
+function keysFor(action) { return (app.bindings[action] || []).map(keyLabel).join(' / '); }
 
 function releaseHeldKeys() {
   keyHeld.left = keyHeld.right = false;
@@ -322,33 +344,33 @@ function bindInput() {
     const tag = (e.target && e.target.tagName) || '';
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
     app.audio.ensure();
-    const k = e.code;
-    if (KEYMAP[k]) {
+    const k = codeAction[e.code];
+    if (k === 'left' || k === 'right') {
       // Only capture movement during play; menus keep arrow-key navigation.
       if (app.state !== 'active' && app.state !== 'countdown') return;
-      keyHeld[KEYMAP[k]] = true;
+      keyHeld[k] = true;
       e.preventDefault();
       return;
     }
-    if (k === 'Space' || k === 'ArrowUp' || k === 'KeyW') {
+    if (k === 'jump') {
       if (app.session && app.state === 'active') {
         app.session.pendingJumpId++;
         e.preventDefault();
       }
       return;
     }
-    if (k === 'Escape' || k === 'KeyP') { onEscape(); e.preventDefault(); return; }
-    if (k === 'KeyR' && app.session && (app.state === 'active' || app.state === 'paused' || app.state === 'results')) {
+    if (k === 'pause') { onEscape(); e.preventDefault(); return; }
+    if (k === 'retry' && app.session && (app.state === 'active' || app.state === 'paused' || app.state === 'results')) {
       retryLevel(); return;
     }
-    if (k === 'KeyU' && app.session && app.state === 'active') app.session.undo();
-    if (k === 'KeyC' && app.renderer && app.renderer.camBase) {
+    if (k === 'undo' && app.session && app.state === 'active') app.session.undo();
+    if (k === 'camera' && app.renderer && app.renderer.camBase) {
       app.renderer.camera.position.copy(app.renderer.camBase);
     }
   });
   window.addEventListener('keyup', (e) => {
-    const k = KEYMAP[e.code];
-    if (k) keyHeld[k] = false;
+    const k = codeAction[e.code];
+    if (k === 'left' || k === 'right') keyHeld[k] = false;
   });
   // A key held while focus leaves the window never sees its keyup.
   window.addEventListener('blur', releaseHeldKeys);
@@ -582,6 +604,13 @@ function showTitle() {
     el('button', { class: 'btn', text: 'Help & Rules', onclick: () => showHelp() }),
     el('button', { class: 'btn', text: 'Profile', onclick: () => showProfile() }),
   ]);
+  const ptr = platformStrings((navigator && navigator.language) || 'en-US');
+  if (app.platform.canSignIn()) {
+    row2.appendChild(el('button', { class: 'btn', id: 'btn-signin', text: ptr('signIn'), onclick: () => app.platform.signIn() }));
+  }
+  if (app.platform.hosted && app.platform.inviteLink()) {
+    row2.appendChild(el('button', { class: 'btn', id: 'btn-invite', text: ptr('invite'), onclick: () => copyInvite(ptr) }));
+  }
   shell.appendChild(play);
   shell.appendChild(row);
   shell.appendChild(row2);
@@ -598,6 +627,26 @@ function showTitle() {
     } catch (e) { localStorage.removeItem(SNAPSHOT_KEY); }
   }
   showOverlay(shell, '.btn.primary');
+}
+
+async function copyInvite(ptr) {
+  const link = app.platform.inviteLink();
+  if (!link) return;
+  try {
+    await navigator.clipboard.writeText(link);
+    toast(ptr('inviteCopied'));
+  } catch (e) {
+    toast(ptr('inviteFailed', { link }));
+  }
+}
+
+function toast(text) {
+  const t = app.els.toast;
+  t.textContent = text;
+  t.hidden = false;
+  announce(text);
+  clearTimeout(app.toastTimer);
+  app.toastTimer = setTimeout(() => { t.hidden = true; }, 3500);
 }
 
 function resumeSnapshot(parsed) {
@@ -969,9 +1018,36 @@ function labeled(text, control) {
   return l;
 }
 
+// Player preferences mirrored to the StarHermit settings KV when signed in.
+const PREF_KEYS = ['volumes', 'gfx', 'reducedMotion', 'highContrast', 'largeText', 'leftHanded', 'haptics', 'palette', 'camera', 'tutorialsSeen'];
+let prefsTimer = null;
+function pushPrefs() {
+  if (!app.platform.hosted) return;
+  clearTimeout(prefsTimer);
+  prefsTimer = setTimeout(() => {
+    const out = {};
+    for (const k of PREF_KEYS) out[k] = app.settings[k];
+    app.platform.patchSettings(out);
+  }, 600);
+}
+function applyRemotePrefs(remote) {
+  if (!remote || typeof remote !== 'object') return;
+  for (const k of PREF_KEYS) {
+    if (remote[k] === undefined || remote[k] === null) continue;
+    const v = remote[k];
+    if (typeof DEFAULT_SETTINGS[k] === 'object') {
+      if (typeof v === 'object' && !Array.isArray(v)) app.settings[k] = Object.assign(structuredClone(DEFAULT_SETTINGS[k]), v);
+    } else if (typeof v === typeof DEFAULT_SETTINGS[k]) {
+      app.settings[k] = v;
+    }
+  }
+  store(SETTINGS_KEY, app.settings);
+}
+
 function saveSettings() {
   store(SETTINGS_KEY, app.settings);
   applyA11yClasses();
+  pushPrefs();
   app.platform.funnel('settings-change', {});
 }
 
@@ -1029,14 +1105,14 @@ function showHelp() {
   const cards = el('div', { class: 'card-grid' });
   const ruleCards = [
     ['Goal', 'Guide your wind-up climber to the glowing exit door on each floor of the tower.'],
-    ['Move', 'Walk with ← / → or A / D. On touch, hold the arrow pads. Gamepad: left stick or D-pad.'],
-    ['Jump', 'Press Space, W, or ↑ — or the JUMP pad — while on the ground. Jumping in mid-air is an invalid action and costs score.'],
+    ['Move', 'Walk with ' + keysFor('left') + ' (left) and ' + keysFor('right') + ' (right). On touch, hold the arrow pads. Gamepad: left stick or D-pad.'],
+    ['Jump', 'Press ' + keysFor('jump') + ' — or the JUMP pad — while on the ground. Jumping in mid-air is an invalid action and costs score.'],
     ['Trick steps', 'Some floors are decoys: they shimmer once touched, then you fall through. They never change — learn them.'],
     ['Vanishing platforms', 'Paler platforms fade in and out on a fixed, deterministic rhythm. Watch a full cycle before crossing.'],
     ['Hazards', 'Red spikes and long falls rewind you to the last checkpoint flag. Retries are instant and unlimited.'],
     ['Gears', 'Golden gears are optional collectibles worth 150 points each.'],
     ['Score', 'Completion 1000 + gears + time/move bonuses − 40 per death − 5 per invalid action. Results show the full breakdown.'],
-    ['Pause / retry', 'Esc or P pauses. R retries instantly. C resets the camera. U undoes in Practice.'],
+    ['Pause / retry', keysFor('pause') + ' pauses. ' + keysFor('retry') + ' retries instantly. ' + keysFor('camera') + ' resets the camera. ' + keysFor('undo') + ' undoes in Practice.'],
   ];
   for (const [t, d] of ruleCards) {
     const c = el('div', { class: 'card' });
@@ -1226,6 +1302,7 @@ function buildShell() {
   const liveAssert = el('div', { id: 'live-assert', class: 'visually-hidden', role: 'alert', 'aria-live': 'assertive' });
   const boardDesc = el('div', { id: 'board-desc', class: 'visually-hidden', 'aria-label': 'Board state' });
   const captions = el('div', { id: 'captions', 'aria-hidden': 'true' });
+  const toastEl = el('div', { id: 'toast', class: 'toast', hidden: 'hidden', 'aria-hidden': 'true' });
 
   appRoot.appendChild(canvas);
   appRoot.appendChild(hud);
@@ -1236,9 +1313,10 @@ function buildShell() {
   appRoot.appendChild(liveAssert);
   appRoot.appendChild(boardDesc);
   appRoot.appendChild(captions);
+  appRoot.appendChild(toastEl);
 
   app.els = {
-    canvas, hud, overlay, countdown, touch, live, liveAssert, boardDesc, captions,
+    canvas, hud, overlay, countdown, touch, live, liveAssert, boardDesc, captions, toast: toastEl,
     hudObjective: hud.querySelector('#hud-objective'),
     hudLesson: hud.querySelector('#hud-lesson'),
     hudScore: hud.querySelector('#hud-score'),
@@ -1285,8 +1363,20 @@ async function boot() {
     if (document.hidden && app.state === 'active') pauseGame();
   });
   window.addEventListener('beforeunload', persistSnapshot);
+  setBindings(DEFAULT_BINDINGS);
   bindInput();
   await app.platform.init();
+  if (app.platform.hosted) {
+    setBindings(await app.platform.loadBindings(DEFAULT_BINDINGS));
+    applyRemotePrefs(await app.platform.getSettings());
+    applyA11yClasses();
+    for (const bus of BUS_NAMES) app.audio.setVolume(bus, app.settings.volumes[bus]);
+    app.renderer.setGraphicsSettings(currentGfx());
+  }
+  app.platform.onAuthChange = () => {
+    toast(platformStrings((navigator && navigator.language) || 'en-US')('signedOut'));
+    if (app.state === 'title') showTitle();
+  };
   // Remote-preferred cloud load: when the platform slot held a newer save,
   // adopt it over the local cache before the first screen renders.
   if (app.platform.cloudDoc && app.platform.cloudDoc.progress && typeof app.platform.cloudDoc.progress === 'object') {
