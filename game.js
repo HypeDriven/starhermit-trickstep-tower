@@ -575,7 +575,11 @@ function showOverlay(node, focusSel) {
   app.els.overlay.appendChild(node);
   app.els.overlay.hidden = false;
   const focusable = node.querySelector(focusSel || 'button, [href], input, select, [tabindex]');
-  if (focusable) focusable.focus();
+  // keep the screen's heading in view: focusing a button low in a tall,
+  // scrolling screen (e.g. Help's Back) must not scroll the title away
+  if (focusable) focusable.focus({ preventScroll: true });
+  node.scrollTop = 0;
+  app.els.overlay.scrollTop = 0;
 }
 
 function screenShell(titleText, desc) {

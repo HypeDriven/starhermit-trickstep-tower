@@ -334,7 +334,7 @@ body[data-game-state="results"] #touch-controls { display: none; }
   .hud-group { padding: 3px 8px; font-size: 0.85em; }
   .touch-btn { width: 52px; height: 52px; }
   .touch-btn.jump { width: 68px; height: 68px; }
-  .screen { max-height: 96vh; }
+  .screen { max-height: calc(96vh / var(--ui-scale, 1)); }
 }
 
 /* Reduced motion: no transitions/animations anywhere in the DOM layer. */
@@ -389,7 +389,7 @@ body.reduced-motion * { animation: none !important; transition: none !important;
   left: 50%;
   bottom: calc(24px + env(safe-area-inset-bottom, 0px));
   transform: translateX(-50%);
-  max-width: min(92vw, 520px);
+  max-width: min(calc(92vw / var(--ui-scale, 1)), 520px);
   padding: 10px 16px;
   background: var(--panel-2);
   color: var(--ink);
@@ -401,3 +401,10 @@ body.reduced-motion * { animation: none !important; transition: none !important;
   text-align: center;
 }
 .toast[hidden] { display: none; }
+
+/* ---------------- large screens ----------------
+   ui-scale.js sets --ui-scale (1 up to 1600x1000, then viewport/1600x1000).
+   Every DOM layer above the full-viewport canvas is zoomed by it so menus,
+   HUD and touch pads keep their proportions on 2K/4K/ultrawide monitors;
+   the canvas itself stays unzoomed. */
+#app > :not(#game-canvas), .safe-bar, #fps-meter, .toast { zoom: var(--ui-scale, 1); }
