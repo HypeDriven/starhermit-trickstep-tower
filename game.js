@@ -1192,16 +1192,22 @@ async function showResults(sess) {
 
   // Score submission
   if (sess.ranked && r.won) {
-    const status = el('p', { class: 'meta', text: 'Submitting score for validation…' });
+    const pt = platformStrings((navigator && navigator.language) || 'en-US');
+    const hosted = app.platform.hosted;
+    const status = el('p', { class: 'meta lb-line', text: hosted ? pt('lbPosting') : 'Saved locally (casual board).' });
+    status.setAttribute('aria-live', 'polite');
     shell.appendChild(status);
-    const res = await app.platform.submitScore(
+    const pending = app.platform.submitScore(
       sess.mode, sess.level.id, b, sess.envelope(),
       { won: r.won, assists: sess.mode === 'practice', version: CONTENT_VERSION, seed: sess.level.seed, durationMs: r.durationMs }
     );
-    // Replace the pending line in place instead of stacking a second message.
-    status.textContent = res.validated
-      ? 'Validated ✓ — rank #' + res.rank + ' on the ' + sess.mode + ' board.'
-      : 'Saved locally (casual board' + (res.error ? ', host unreachable: ' + res.error : '') + ').';
+    // Hosted: the StarHermit high-score board; replace the pending line in place.
+    if (hosted) {
+      pending.then((res) => {
+        status.textContent = !res.posted ? pt('lbNotPosted')
+          : res.rank ? pt('lbRank', { rank: res.rank }) : pt('lbPosted');
+      });
+    }
   } else if (!sess.ranked) {
     shell.appendChild(el('p', { class: 'meta', text: 'Unranked mode — no leaderboard submission.' }));
   }

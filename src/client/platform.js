@@ -122,33 +122,28 @@ export class Platform {
 
   // ---- scores -------------------------------------------------------------
 
-  // Submit a score with its replay envelope. Hosted: the game's own server
-  // validates the replay; any failure degrades to the local casual board.
+  // Record a won ranked run on the local casual board and, when signed in,
+  // post its total to the platform `high-score` board through
+  // StarHermit.submitScores (score-script.js range-checks it). Resolves
+  // { rank, casual, posted } — rank on the platform board when posted.
   async submitScore(board, levelId, breakdown, envelope, meta) {
-    if (this.hosted) {
-      try {
-        const data = await this.sh.api('/api/v1/scores', {
-          method: 'POST',
-          body: { board, levelId, name: this.playerName, sessionId: this.sessionId, breakdown, envelope, meta },
-        });
-        if (data && data.validated) return { rank: data.rank, validated: true };
-        return { ...this._localSubmit(board, levelId, breakdown, meta), validated: false, error: 'not-validated' };
-      } catch (e) {
-        return { ...this._localSubmit(board, levelId, breakdown, meta), validated: false, error: String((e && e.message) || e) };
-      }
-    }
-    return { ...this._localSubmit(board, levelId, breakdown, meta), validated: false };
+    const local = this._localSubmit(board, levelId, breakdown, meta);
+    if (!this.hosted || typeof this.sh.submitScores !== 'function') return { ...local, posted: false };
+    let keys = [];
+    try { keys = await this.sh.submitScores({ 'high-score': breakdown.total }); } catch (e) { keys = []; }
+    if (!keys || keys.indexOf('high-score') < 0) return { rank: null, casual: false, posted: false };
+    try {
+      const r = await this.sh.leaderboard('high-score', { pageSize: 100 });
+      const me = ((r && r.items) || []).find(i => i.userId === this.sh.userId);
+      return { rank: me ? me.rank : null, casual: false, posted: true };
+    } catch (e) { return { rank: null, casual: false, posted: true }; }
   }
 
-  // Read-only everywhere: hosted prefers the validated own-server board, then
-  // the platform leaderboard (clients never submit there); otherwise local.
+  // Hosted: the platform `high-score` board (or the game's first board);
+  // otherwise the local casual board.
   async getScores(board) {
     if (this.hosted) {
-      try {
-        const data = await this.sh.api('/api/v1/scores?board=' + encodeURIComponent(board));
-        if (data && Array.isArray(data.entries)) return { entries: data.entries, casual: false, validated: true };
-      } catch (e) { /* own server unreachable: try the platform board */ }
-      let r = await this.sh.leaderboard(board, { pageSize: 20 });
+      let r = await this.sh.leaderboard('high-score', { pageSize: 20 });
       if (!r.board) r = await this.sh.leaderboard(null, { pageSize: 20 });
       if (r.board) {
         const entries = [];
