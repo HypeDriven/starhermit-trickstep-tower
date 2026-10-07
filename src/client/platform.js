@@ -228,9 +228,8 @@ export class Platform {
 
   // ---- funnel -------------------------------------------------------------
 
-  // Anonymous aggregate events to the game's own server only when hosted.
-  funnel(event, props) {
-    if (!this.hosted) return;
-    this.sh.api('/api/v1/funnel', { method: 'POST', body: { event, ...(props || {}) } }).catch(() => {});
-  }
+  // Funnel events are not sent: the platform script (score-script.js) has no
+  // funnel route and the platform exposes no per-game telemetry endpoint.
+  // (server.js keeps its /api/v1/funnel route for local development only.)
+  funnel(event, props) { /* no-op */ }
 }

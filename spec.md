@@ -225,7 +225,7 @@ No module may mutate rules state except through a validated command. Rendering c
 ### Publishing and operations
 - The platform script is `score-script.js`, declared with `server=score-script.js` (canonical copy in the games repo's `tools/score-script.js`); `server.js` stays as the local dev server (its replay-validated `/api/v1/scores` routes are not called by the client). Choose a digest-pinned container only if profiling proves the sandbox unsuitable; no initial design here requires one.
 - Define control defaults, achievement metadata, and versioned settings before release. Publish immutable build assets, verify the launch path, maintain migration tests for saves, and expose no secret configuration to the client.
-- Capture anonymous funnel events only for start, tutorial step, round end, retry, settings change, and error category. Avoid raw text, precise personal data, and cross-title tracking.
+- Send no funnel events: the platform exposes no per-game telemetry endpoint, so `platform.funnel()` is a no-op (the local dev `server.js` keeps a whitelisted `/api/v1/funnel` route for start, tutorial step, round end, retry, settings change and error category).
 
 ## 7. Content, economy, and retention
 
