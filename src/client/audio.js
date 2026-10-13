@@ -70,7 +70,7 @@ export class AudioEngine {
       const g = this.ctx.createGain();
       g.gain.value = this.settings.volumes[b] ?? 0.7;
       g.connect(master);
-      this.buses[b] = g;
+      this.buses[b] = (globalThis.GameOptions ? globalThis.GameOptions.tagBus(g, b) : g);
     }
     this.started = true;
     this._startAmbience();
@@ -90,7 +90,7 @@ export class AudioEngine {
   _tone(bus, freq, dur, type, gain, when, slide) {
     if (!this.ctx) return;
     const t0 = when ?? this.ctx.currentTime;
-    const o = this.ctx.createOscillator();
+    const o = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(this.ctx.createOscillator(), bus) : this.ctx.createOscillator());
     const g = this.ctx.createGain();
     o.type = type || 'square';
     o.frequency.setValueAtTime(freq, t0);
@@ -109,7 +109,7 @@ export class AudioEngine {
     const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
     const d = buf.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = (this.rng() * 2 - 1) * (1 - i / len);
-    const src = this.ctx.createBufferSource();
+    const src = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(this.ctx.createBufferSource(), bus) : this.ctx.createBufferSource());
     src.buffer = buf;
     const f = this.ctx.createBiquadFilter();
     f.type = 'bandpass'; f.frequency.value = filterFreq || 1200;
@@ -141,7 +141,7 @@ export class AudioEngine {
     const cached = this._sampleCache.get(sample);
     if (cached === undefined) { this._loadSample(sample); return false; }
     if (!cached || typeof cached.then === 'function') return false;
-    const src = this.ctx.createBufferSource();
+    const src = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(this.ctx.createBufferSource(), null) : this.ctx.createBufferSource());
     src.buffer = cached;
     src.connect(this.buses.effects);
     src.start();
@@ -192,7 +192,7 @@ export class AudioEngine {
       this._ambTimer = setTimeout(tick, 500);
     };
     tick();
-    const o = this.ctx.createOscillator();
+    const o = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(this.ctx.createOscillator(), null) : this.ctx.createOscillator());
     const g = this.ctx.createGain();
     o.type = 'sine'; o.frequency.value = 55; g.gain.value = 0.03;
     o.connect(g); g.connect(this.buses.ambience);

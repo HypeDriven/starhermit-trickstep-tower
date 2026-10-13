@@ -1094,13 +1094,13 @@ export class Renderer {
       this._buildPost();
     }
     if (this.composer) {
-      try { this.composer.render(dt); return; } catch (e) {
+      try { (globalThis.GameOptions ? globalThis.GameOptions.draw(this.composer.renderer, () => this.composer.render(dt)) : this.composer.render(dt)); return; } catch (e) {
         this.postFailed = true;
         this.composer.dispose();
         this.composer = null;
       }
     }
-    this.renderer.render(this.scene, this.camera);
+    (globalThis.GameOptions ? globalThis.GameOptions.draw(this.renderer, () => this.renderer.render(this.scene, this.camera)) : this.renderer.render(this.scene, this.camera));
   }
 
   kickShake(amount) { if (!this.settings.reducedMotion) this.shake = Math.min(1, this.shake + amount); }
