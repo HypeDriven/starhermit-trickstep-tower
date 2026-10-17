@@ -17,6 +17,8 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { TILE, moverOffset, isVanishSolid, makeRng, PLAYER_W, PLAYER_H } from '../rules.js';
 import { THEMES } from '../content.js';
+
+const REASON_KEYS = { exit: 'reasonExit', 'move-limit': 'reasonMoveLimit', 'time-limit': 'reasonTimeLimit' };
 import { detectPreset, resolve, describe, SHADOW_MAP, PARTICLE_BUDGET, DUST_MOTES, DEFAULT_GFX } from './gfx.js';
 
 const LAYER_ENV = 0, LAYER_GAME = 1, LAYER_FX = 2;
@@ -166,13 +168,13 @@ export class Renderer {
   }
 
   /** What the settings panel shows: GPU, auto choice, resolved tiers, cost and frame rate. */
-  graphicsInfo() {
+  graphicsInfo(words) {
     const px = [this.renderer.domElement.width, this.renderer.domElement.height];
     return {
-      gpu: this.gpu || 'unknown GPU',
+      gpu: this.gpu || (words && words.unknownGpu) || 'unknown GPU',
       detected: this.detected,
       resolved: this.q,
-      summary: describe(this.q, px),
+      summary: describe(this.q, px, words),
       fps: Math.round(this.fps || 0),
       adaptiveScale: Math.round(this.adaptiveScale * 100) / 100,
       postFailed: !!this.postFailed,
@@ -1106,17 +1108,19 @@ export class Renderer {
   kickShake(amount) { if (!this.settings.reducedMotion) this.shake = Math.min(1, this.shake + amount); }
 
   // Concise navigable text model of the board for screen readers.
-  describeState(state, level) {
-    if (!state) return 'No active level.';
+  // Text for the screen-reader board description; `t` is the game's
+  // translator and `name` the localized level name.
+  describeState(state, level, t, name) {
+    if (!state) return t('descNoLevel');
     const parts = [];
-    parts.push('Level ' + (level.name || state.levelId) + '.');
-    parts.push('Player at column ' + Math.round(state.player.x) + ', row ' + Math.round(state.player.y) +
-      (state.player.onGround ? ', on the ground.' : ', in the air.'));
+    parts.push(t('descLevel', { name: name || level.name || state.levelId }));
+    const pos = { x: Math.round(state.player.x), y: Math.round(state.player.y) };
+    parts.push(t(state.player.onGround ? 'descPlayerGround' : 'descPlayerAir', pos));
     const gears = state.gears.filter(Boolean).length;
-    parts.push('Gears: ' + gears + ' of ' + state.gears.length + '.');
-    parts.push('Deaths: ' + state.deaths + '. Moves: ' + state.moves + '.');
-    if (state.checkpoint) parts.push('Checkpoint active.');
-    if (state.over) parts.push(state.won ? 'Level complete.' : 'Attempt ended: ' + state.reason + '.');
+    parts.push(t('descGears', { n: gears, total: state.gears.length }));
+    parts.push(t('descDeaths', { deaths: state.deaths, moves: state.moves }));
+    if (state.checkpoint) parts.push(t('descCheckpoint'));
+    if (state.over) parts.push(state.won ? t('descComplete') : t('descEnded', { reason: t(REASON_KEYS[state.reason] || '') || state.reason }));
     return parts.join(' ');
   }
 }

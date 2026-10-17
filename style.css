@@ -210,6 +210,7 @@ body.high-contrast { --panel: #000; --panel-2: #111; --ink: #fff; --ink-dim: #dd
 .stage-cell .star { position: absolute; top: 1px; right: 4px; color: var(--accent); }
 
 .form { display: flex; flex-direction: column; gap: 10px; margin: 12px 0; max-width: 70ch; }
+.form > label:not([class]) select { margin-left: 0.5em; }
 .field { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .slider-row { display: flex; align-items: center; gap: 12px; }
 .slider-row span { width: 90px; }
@@ -276,7 +277,7 @@ table.breakdown .total td { border-top: 2px solid var(--accent); font-weight: 70
   user-select: none;
   -webkit-user-select: none;
 }
-.touch-btn.jump { width: 84px; height: 84px; font-weight: 700; }
+.touch-btn.jump { width: 84px; height: 84px; font-weight: 700; font-size: 1rem; padding: 0; white-space: nowrap; overflow: hidden; }
 .touch-btn.held { background: var(--accent); color: #201808; }
 body.left-handed .move-pad { order: 2; }
 body.left-handed .jump-pad { order: 1; }
@@ -333,7 +334,7 @@ body[data-game-state="results"] #touch-controls { display: none; }
   #hud { top: calc(24px + var(--sat)); }
   .hud-group { padding: 3px 8px; font-size: 0.85em; }
   .touch-btn { width: 52px; height: 52px; }
-  .touch-btn.jump { width: 68px; height: 68px; }
+  .touch-btn.jump { width: 68px; height: 68px; font-size: 0.8rem; }
   .screen { max-height: calc(96vh / var(--ui-scale, 1)); }
 }
 
@@ -355,8 +356,8 @@ body.reduced-motion * { animation: none !important; transition: none !important;
 .settings-tabs .btn.tab.active { background: var(--accent); color: #201808; font-weight: 700; }
 .gfx-panel { gap: 6px; }
 .gfx-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 44px; }
-.gfx-row > label { flex: 1 1 auto; min-width: 0; }
-.gfx-row select { flex: 0 0 auto; width: min(280px, 66%); }
+.gfx-row > label { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; hyphens: auto; }
+.gfx-row select { flex: 0 0 auto; width: min(280px, 60%); min-width: 0; }
 .gfx-row input[type="checkbox"] { width: 24px; height: 24px; accent-color: var(--accent); }
 .gfx-scale { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; width: min(280px, 66%); min-width: 0; white-space: nowrap; }
 .gfx-scale input { flex: 1 1 auto; min-width: 0; min-height: 44px; accent-color: var(--accent); }

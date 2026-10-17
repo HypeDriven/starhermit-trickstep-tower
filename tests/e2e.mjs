@@ -33,6 +33,7 @@ import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { launchToken, stubStarHermit } from './starhermit-e2e.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SHOT = (stage, vp) => `/tmp/trickstep-tower-e2e-${stage}-${vp}.png`;
@@ -115,7 +116,7 @@ const waitState = (page, name, timeout = 20000) =>
 
 // ---------- graphics settings ----------
 async function openGraphics(page) {
-  await page.click('#overlay button:has-text("Settings")');
+  await page.click('#overlay [data-action="settings"]');
   await page.click('#overlay [data-settings-tab="graphics"]');
   await page.waitForSelector('#gfx-preset', { state: 'visible' });
 }
@@ -190,7 +191,7 @@ async function runPass(browser, name, ctxOpts, { full }) {
 
     if (full) {
       // Settings: open from title, count the 4 audio sliders + 5 toggles, close.
-      await page.click('#overlay button:has-text("Settings")');
+      await page.click('#overlay [data-action="settings"]');
       await page.waitForSelector('#overlay .screen h2', { state: 'visible' });
       const slides = await page.locator('#overlay .slider-row input[type=range]').count();
       const toggles = await page.locator('#overlay .field input[type=checkbox]').count();
@@ -202,7 +203,7 @@ async function runPass(browser, name, ctxOpts, { full }) {
       ok(`${name}: Settings opens and closes (${slides} sliders, ${toggles} toggles)`);
 
       // Help: rule cards present, then back.
-      await page.click('#overlay button:has-text("Help & Rules")');
+      await page.click('#overlay [data-action="help"]');
       await page.waitForSelector('#overlay .card');
       const cards = await page.locator('#overlay .card').count();
       if (cards < 5) throw new Error(`expected >=5 help cards, got ${cards}`);
@@ -214,7 +215,7 @@ async function runPass(browser, name, ctxOpts, { full }) {
     // Title → Play → mode select → Journey → Stage 1
     await page.click('#overlay .btn.primary.big'); // ▶ Play
     await waitState(page, 'mode-select', 8000);
-    await page.click('#overlay button:has-text("Play (recommended)")'); // Journey
+    await page.click('#overlay [data-mode="journey"] button'); // Journey (recommended)
     await page.waitForSelector('#overlay .stage-grid');
     const cells = await page.locator('#overlay .stage-cell').count();
     if (cells !== 40) throw new Error(`expected 40 journey stages, got ${cells}`);
@@ -230,9 +231,9 @@ async function runPass(browser, name, ctxOpts, { full }) {
       // Pause / resume via Esc, then a visible Resume button.
       await page.keyboard.press('Escape');
       await waitState(page, 'paused', 8000);
-      await page.waitForSelector('#overlay button:has-text("Resume")', { state: 'visible' });
+      await page.waitForSelector('#overlay [data-action="resume"]', { state: 'visible' });
       await page.screenshot({ path: SHOT('pause', name) });
-      await page.click('#overlay button:has-text("Resume")');
+      await page.click('#overlay [data-action="resume"]');
       await waitState(page, 'active', 8000);
       ok(`${name}: pause (Esc) and resume work`);
     }
@@ -311,7 +312,7 @@ async function runPass(browser, name, ctxOpts, { full }) {
 
     if (full) {
       // Next → Stage 2 (authentic progression through the visible button).
-      await page.click('#overlay button:has-text("Next →")');
+      await page.click('#overlay [data-action="next"]');
       await waitState(page, 'active', 15000);
       const st2 = await readApp(page);
       if (st2.levelId !== 'journey-1') throw new Error(`expected journey-1 via Next, got ${st2.levelId}`);
@@ -319,7 +320,7 @@ async function runPass(browser, name, ctxOpts, { full }) {
       // Back out to title to leave a clean run.
       await page.keyboard.press('Escape');
       await waitState(page, 'paused', 8000);
-      await page.click('#overlay button:has-text("Leave level")');
+      await page.click('#overlay [data-action="leave"]');
       await waitState(page, 'title', 8000);
       ok(`${name}: left the level back to title`);
     }
@@ -329,6 +330,89 @@ async function runPass(browser, name, ctxOpts, { full }) {
 
   if (errors.length) throw new Error(`${name} pass had page errors:\n  ${errors.join('\n  ')}`);
   ok(`${name}: no page errors`);
+}
+
+// ---------- language: account preference, live switch, report ----------
+// Signed in through a stubbed StarHermit API whose account language is fr-CA:
+// Automatic resolves to it; picking Italian in the shared Language section
+// relabels the open Settings in place and saves ui.language; a bug report
+// posts. German then labels the title, mode cards and HUD; switching back to
+// Automatic from the pause menu mid-level re-renders the HUD in French.
+async function languagePass(browser, name, ctxOpts) {
+  const errors = [];
+  const context = await browser.newContext(ctxOpts);
+  const page = await context.newPage();
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+  page.on('console', (m) => {
+    if ((m.type() !== 'error' && m.type() !== 'warning') || browserNoise.test(m.text())) return;
+    errors.push(`console ${m.type()}: ${m.text()}`);
+  });
+  const text = async (sel) => ((await page.textContent(sel)) || '').trim();
+  try {
+    const calls = await stubStarHermit(page, { preferredLanguage: 'fr-CA' });
+    await page.goto('about:blank');
+    await page.goto(BASE + '/index.html#game_token=' + launchToken(), { waitUntil: 'load' });
+    await page.waitForFunction(() => document.documentElement.lang === 'fr-CA', null, { timeout: 15000 });
+    await waitState(page, 'title', 15000);
+    if ((await text('#overlay [data-action="play"]')) !== '▶ Jouer') throw new Error('title not French: ' + await text('#overlay [data-action="play"]'));
+
+    await page.click('#overlay [data-action="settings"]');
+    await page.click('#overlay [data-settings-tab="graphics"]');
+    const choice = page.locator('[data-game-language="choice"]');
+    await choice.scrollIntoViewIfNeeded();
+    const auto = await choice.locator('option').first().textContent();
+    if (auto !== 'Automatique — Français (Canada)') throw new Error(`Automatic label not resolved: "${auto}"`);
+    await choice.selectOption('it-IT');
+    await page.waitForFunction(() => document.documentElement.lang === 'it-IT');
+    await page.waitForFunction(() => /Salvato/.test(document.querySelector('[data-game-language="status"]').textContent));
+    if (calls.settings['ui.language']?.choice !== 'it-IT') throw new Error('ui.language not saved: ' + JSON.stringify(calls.settings));
+    if ((await text('#overlay #screen-title')) !== 'Impostazioni') throw new Error('settings title not relabelled');
+    if ((await text('#settings-tab-general')) !== 'Generali') throw new Error('settings tabs not relabelled');
+    if ((await text('#overlay label[for="gfx-preset"]')) !== 'Qualità') throw new Error('graphics rows not relabelled');
+    if (!(await choice.isVisible())) throw new Error('language selector lost during relabel');
+    await page.locator('[data-game-report="title"]').scrollIntoViewIfNeeded();
+    await page.fill('[data-game-report="title"]', 'Test report');
+    await page.click('[data-game-report="send"]');
+    await page.waitForFunction(() => /Grazie/.test(document.querySelector('[data-game-report="status"]').textContent));
+    if (!calls.reports?.[0] || calls.reports[0].kind !== 'bug') throw new Error('report not posted');
+    ok(`${name}: Automatic resolved fr-CA from the account; Italian applied live, saved to ui.language; report posted`);
+
+    await choice.selectOption('de-DE');
+    await page.waitForFunction(() => document.documentElement.lang === 'de-DE');
+    if ((await text('#overlay #screen-title')) !== 'Einstellungen') throw new Error('settings not German');
+    await page.click('#overlay .screen > .btn.subtle');
+    await waitState(page, 'title', 8000);
+    if ((await text('#overlay [data-action="play"]')) !== '▶ Spielen') throw new Error('title not German');
+    await page.click('#overlay [data-action="play"]');
+    await waitState(page, 'mode-select', 8000);
+    if ((await text('#overlay [data-mode="journey"] h3')) !== 'Reise') throw new Error('mode cards not German');
+    await page.screenshot({ path: SHOT('language-de-modes', name) });
+    await page.click('#overlay [data-mode="journey"] button');
+    await page.click('#overlay .stage-cell[data-stage="1"]');
+    await waitState(page, 'active', 15000);
+    const obj = await text('#hud-objective');
+    if (!/^Ziel: Erreiche den Ausgang — Etappe 1 — /.test(obj)) throw new Error(`HUD objective not German: "${obj}"`);
+    if ((await text('#hud [data-i18n="hudScore"]')) !== 'Punkte') throw new Error('HUD labels not German');
+    await page.screenshot({ path: SHOT('language-de-play', name) });
+    await page.keyboard.press('Escape');
+    await waitState(page, 'paused', 8000);
+    await page.click('#overlay [data-action="settings"]');
+    await page.click('#overlay [data-settings-tab="graphics"]');
+    await choice.scrollIntoViewIfNeeded();
+    await choice.selectOption('auto');
+    await page.waitForFunction(() => document.documentElement.lang === 'fr-CA');
+    if ((await text('#overlay #screen-title')) !== 'Paramètres') throw new Error('settings not relabelled to French');
+    await page.click('#overlay .screen > .btn.subtle');
+    if ((await text('#overlay #screen-title')) !== 'En pause') throw new Error('pause menu not French');
+    await page.click('#overlay [data-action="resume"]');
+    await waitState(page, 'active', 8000);
+    if (!/^Objectif : atteindre la sortie — Étape 1 — /.test(await text('#hud-objective'))) throw new Error('HUD not re-rendered in French');
+    if ((await text('#hud [data-i18n="hudScore"]')) !== 'Pointage') throw new Error('HUD labels not fr-CA');
+    ok(`${name}: German title, modes and HUD; Automatic (fr-CA) from the pause menu re-rendered the HUD mid-level`);
+  } finally {
+    await context.close();
+  }
+  if (errors.length) throw new Error(`${name} language pass had page errors:\n  ${errors.join('\n  ')}`);
 }
 
 // ---------- main ----------
@@ -342,6 +426,8 @@ try {
   await runPass(browser, 'desktop', { viewport: { width: 1280, height: 800 } }, { full: true });
   await runPass(browser, 'mobile',
     { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true }, { full: false });
+  await languagePass(browser, 'desktop-language', { viewport: { width: 1280, height: 800 } });
+  await languagePass(browser, 'mobile-language', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   console.log('\nE2E PASS — trickstep-tower, desktop + mobile, no page errors');
 } catch (e) {
   failures++;

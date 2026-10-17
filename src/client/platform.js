@@ -8,11 +8,43 @@
 // and preferences stay in localStorage.
 //
 // Hosted: profile nickname as the display name, cloud save in the
-// `game:<slug>` slot (remote-first load, debounced save, flush on pagehide),
+// `game:<slug>` slot (merged with local progress on load and on a save
+// conflict, debounced conditional save, flush on pagehide),
 // per-player settings KV, platform control bindings, the invite share link,
 // the read-only platform leaderboard, and launch-token renewal (SDK). The
 // game's own server routes (/api/v1/scores, /api/v1/funnel) are tried first
 // and degrade to the local casual board when absent.
+
+// Union of two progress docs, so a save from another device never erases
+// local clears: best score per stage/daily, earliest unlock per achievement,
+// the streak with the later day (longer on a tie), the higher clear count.
+export function mergeProgress(a, b) {
+  a = a && typeof a === 'object' ? a : {};
+  b = b && typeof b === 'object' ? b : {};
+  const maxMap = (x, y) => {
+    const out = Object.assign({}, x || {});
+    for (const [k, v] of Object.entries(y || {})) if (!(k in out) || Number(v) > Number(out[k])) out[k] = v;
+    return out;
+  };
+  const achievements = Object.assign({}, a.achievements || {});
+  for (const [k, v] of Object.entries(b.achievements || {})) if (!achievements[k] || String(v) < String(achievements[k])) achievements[k] = v;
+  const sa = a.streak || { count: 0, lastDay: null };
+  const sb = b.streak || { count: 0, lastDay: null };
+  const later = String(sa.lastDay || '') > String(sb.lastDay || '') ? sa
+    : String(sb.lastDay || '') > String(sa.lastDay || '') ? sb
+      : ((sa.count || 0) >= (sb.count || 0) ? sa : sb);
+  const gear = Object.assign({}, a.gearMasteryStages || {});
+  for (const [k, v] of Object.entries(b.gearMasteryStages || {})) gear[k] = gear[k] || v;
+  return {
+    v: 1,
+    stars: maxMap(a.stars, b.stars),
+    bestDaily: maxMap(a.bestDaily, b.bestDaily),
+    achievements,
+    streak: { count: later.count || 0, lastDay: later.lastDay || null },
+    clears: Math.max(Number(a.clears) || 0, Number(b.clears) || 0),
+    gearMasteryStages: gear,
+  };
+}
 
 function localStore() {
   return (typeof globalThis !== 'undefined' && globalThis.localStorage) || { getItem: () => null, setItem: () => {} };
@@ -33,11 +65,15 @@ export class Platform {
     this.gameSlug = null;
     this.hosted = false;
     this.profile = null;
-    this.cloudDoc = null; // winning save doc after init (remote preferred)
+    this.cloudDoc = null; // cloud slot doc after init (the game merges it)
     this.syncStatus = 'offline'; // offline | saving | synced | error
     this.onAuthChange = null; // (signedIn) => void, set by the game
+    this.onSaveConflict = null; // (remoteDoc) => void, set by the game: merge and save again
     if (this.sh) {
       this.sh.on('saved', (ok) => this._setSyncStatus(ok ? 'synced' : 'error'));
+      // Another device saved first (conditional write refused): writes stay
+      // blocked until the slot is re-read, so reload it and hand it to the game.
+      this.sh.on('saveconflict', () => this._onSaveConflict());
       this.sh.on('auth', (e) => this._onAuth(e));
     }
     if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
@@ -195,6 +231,13 @@ export class Platform {
 
   _setSyncStatus(status) { this.syncStatus = status; }
 
+  async _onSaveConflict() {
+    this._setSyncStatus('saving');
+    let remote = null;
+    try { remote = await this.sh.loadJSON(); } catch (e) { remote = null; }
+    if (this.onSaveConflict) this.onSaveConflict(remote && typeof remote === 'object' ? remote : null);
+  }
+
   // localStorage is written synchronously; the cloud write is debounced ~2 s
   // by the SDK and flushed on pagehide/visibilitychange.
   async saveCloud(doc) {
@@ -213,16 +256,14 @@ export class Platform {
     return Promise.resolve(false);
   }
 
-  // Remote-preferred load: the newer of the cloud slot and the local cache
-  // wins; no slot means "no save yet". Never throws.
+  // Cloud load: the slot (when there is one) is returned for the game to
+  // merge with its local progress; no slot means "no save yet". Never throws.
   async loadCloud() {
     const local = this._readLocalCloud();
     if (!this.hosted) return { ok: true, doc: local };
-    const doc = await this.sh.loadJSON();
-    if (doc && typeof doc === 'object' && (!local || (doc.savedAt || 0) >= (local.savedAt || 0))) {
-      this._writeLocalCloud(doc);
-      return { ok: true, doc, remote: true };
-    }
+    let doc = null;
+    try { doc = await this.sh.loadJSON(); } catch (e) { doc = null; }
+    if (doc && typeof doc === 'object') return { ok: true, doc, remote: true };
     return { ok: true, doc: local };
   }
 

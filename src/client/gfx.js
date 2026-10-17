@@ -90,14 +90,22 @@ export function presetTier(preset, cat) {
 }
 
 /** Short English cost summary (the panel localizes the surrounding labels). */
-export function describe(r, pixels) {
+// Default (English) words for the summary line; the settings panel passes the
+// game-language translations of the same keys.
+export const DESCRIBE_WORDS = {
+  noShadows: 'no shadows', shadows: '{n}² shadows', fullAo: 'full AO', ao: 'AO', bloom: 'bloom',
+  grade: 'grade', noAa: 'no AA', denseParticles: 'dense particles',
+};
+
+export function describe(r, pixels, words) {
+  const w = Object.assign({}, DESCRIBE_WORDS, words || {});
   const parts = [
-    r.shadows === 'off' ? 'no shadows' : SHADOW_MAP[r.shadows] + '² shadows',
-    r.ao === 'off' ? null : r.ao === 'high' ? 'full AO' : 'AO',
-    r.bloom === 'on' ? 'bloom' : null,
-    r.grade === 'on' ? 'grade' : null,
-    r.antialias === 'off' ? 'no AA' : r.antialias.toUpperCase(),
-    r.particles === 'high' ? 'dense particles' : null,
+    r.shadows === 'off' ? w.noShadows : w.shadows.replace('{n}', SHADOW_MAP[r.shadows]),
+    r.ao === 'off' ? null : r.ao === 'high' ? w.fullAo : w.ao,
+    r.bloom === 'on' ? w.bloom : null,
+    r.grade === 'on' ? w.grade : null,
+    r.antialias === 'off' ? w.noAa : r.antialias.toUpperCase(),
+    r.particles === 'high' ? w.denseParticles : null,
     pixels ? pixels[0] + '×' + pixels[1] + ' px' : null,
   ];
   return parts.filter(Boolean).join(' · ');

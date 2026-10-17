@@ -13,10 +13,9 @@ import {
 } from './src/content.js';
 import { Renderer } from './src/client/render.js';
 import { PRESETS, CATEGORIES, DEFAULT_GFX, presetTier, choosePreset, setOverride } from './src/client/gfx.js';
-import { gfxStrings } from './src/client/gfx-i18n.js';
 import { AudioEngine, BUS_NAMES } from './src/client/audio.js';
-import { Platform } from './src/client/platform.js';
-import { platformStrings } from './src/client/platform-i18n.js';
+import { Platform, mergeProgress } from './src/client/platform.js';
+import { t, gt, pt, onLanguage, levelName, lessonText, challengeText, playerName } from './src/client/i18n.js';
 
 // ---------------------------------------------------------------- persistence
 
@@ -79,12 +78,13 @@ function store(key, obj) {
 
 // ---------------------------------------------------------------- achievements
 
+// Names/descriptions are string keys (src/client/strings.js).
 const ACHIEVEMENTS = [
-  { key: 'first-clear', name: 'First Wind', desc: 'Complete your first level.' },
-  { key: 'gear-master', name: 'Gear Collector', desc: 'Collect every gear in a journey stage.' },
-  { key: 'streak-3', name: 'Wound Up Tight', desc: 'Complete the daily challenge 3 days in a row.' },
-  { key: 'tower-top', name: 'Top of the Tower', desc: 'Clear journey stage 40.' },
-  { key: 'centurion', name: 'Hundred Winds', desc: 'Complete 100 levels in total.' },
+  { key: 'first-clear', name: 'achFirstClear' },
+  { key: 'gear-master', name: 'achGearMaster' },
+  { key: 'streak-3', name: 'achStreak3' },
+  { key: 'tower-top', name: 'achTowerTop' },
+  { key: 'centurion', name: 'achCenturion' },
 ];
 
 // ---------------------------------------------------------------- app
@@ -103,16 +103,12 @@ const app = {
   lastAnnounceAt: 0,
   countdownTimer: null,
   countdownHide: null,
+  rerender: null, // repaints the visible screen in the current language
 };
 
 // Where the sync indicator appears (HUD + profile screen).
-const SYNC_LABELS = {
-  synced: 'Cloud save: synced',
-  saving: 'Cloud save: saving…',
-  offline: 'Cloud save: local only',
-  error: 'Cloud save: sync failed — will retry',
-};
-function syncLabel() { return SYNC_LABELS[app.platform.syncStatus] || ''; }
+const SYNC_LABELS = { synced: 'syncSynced', saving: 'syncSaving', offline: 'syncOffline', error: 'syncError' };
+function syncLabel() { const k = SYNC_LABELS[app.platform.syncStatus]; return k ? t(k) : ''; }
 
 function setState(next, reason) {
   const prev = app.state;
@@ -210,7 +206,7 @@ class Session {
     const events = step(s, inp);
     if (s.invalid > prevInvalid) {
       app.audio.event('invalid');
-      announce('That action is not possible right now.', true);
+      announce(t('invalidAction'), true);
     }
     for (const ev of events) this.onEvent(ev);
     if (wasAirborne && s.player.onGround) app.audio.event('land');
@@ -238,12 +234,12 @@ class Session {
       case 'death':
         app.audio.event('death'); haptic(60); r.kickShake(0.7);
         r.burst(wx, wy, '#ff5a4e', 24, 4);
-        announce('Trap! ' + (ev.why === 'spikes' ? 'Spikes.' : 'You fell.') + ' Retry from the last checkpoint.', true);
+        announce(t(ev.why === 'spikes' ? 'trapSpikes' : 'trapFall'), true);
         break;
       case 'gear': app.audio.event('gear'); haptic(20); r.burst(wx, wy, '#ffd777', 14, 3); break;
-      case 'checkpoint': app.audio.event('checkpoint'); announce('Checkpoint reached.'); break;
+      case 'checkpoint': app.audio.event('checkpoint'); announce(t('checkpointReached')); break;
       case 'spring': app.audio.event('spring'); r.kickShake(0.2); break;
-      case 'reveal': app.audio.event('reveal'); announce('A trick step shimmered — remember it.', false); break;
+      case 'reveal': app.audio.event('reveal'); announce(t('trickShimmer'), false); break;
       case 'win': app.audio.event('win'); r.burst(wx, wy, '#9affd0', 40, 5); break;
       case 'fail': app.audio.event('fail'); break;
       default: break;
@@ -257,7 +253,7 @@ class Session {
     this.state = deserialize(target);
     this.undoStack.length = Math.max(0, this.undoStack.length - 4);
     app.audio.event('ui');
-    announce('Undone — stepped back two seconds.');
+    announce(t('undone'));
   }
 
   finish() {
@@ -445,7 +441,7 @@ function startLevel(level, mode, opts) {
   setState('countdown', 'auto');
   app.session.countdown = 3;
   app.els.countdown.hidden = false;
-  announce('Objective: reach the exit door. ' + (level.lesson || level.name), false);
+  announce(t('objectiveAnnounce', { detail: level.lesson ? lessonText(level).text : levelName(level) }), false);
   let n = 3;
   app.els.countdown.textContent = String(n);
   app.audio.event('countdown');
@@ -454,7 +450,7 @@ function startLevel(level, mode, opts) {
     if (n > 0) { app.els.countdown.textContent = String(n); app.audio.event('countdown'); }
     else {
       clearCountdown();
-      app.els.countdown.textContent = 'GO';
+      app.els.countdown.textContent = t('go');
       app.audio.event('go');
       app.countdownHide = setTimeout(() => { app.els.countdown.hidden = true; }, 500);
       setState('active', 'countdown-done');
@@ -553,19 +549,20 @@ function updateHud() {
   app.els.hudDeaths.textContent = String(st.deaths);
   app.els.hudTime.textContent = (st.tick * TICK_MS / 1000).toFixed(1) + 's';
   if (st.moveLimit !== null) {
-    app.els.hudLimit.textContent = 'Moves left: ' + Math.max(0, st.moveLimit - st.moves);
+    app.els.hudLimit.textContent = t('movesLeft', { n: Math.max(0, st.moveLimit - st.moves) });
   } else if (st.timeLimit !== null) {
-    app.els.hudLimit.textContent = 'Time left: ' + Math.max(0, ((st.timeLimit - st.tick) * TICK_MS / 1000)).toFixed(0) + 's';
+    app.els.hudLimit.textContent = t('timeLeft', { n: Math.max(0, ((st.timeLimit - st.tick) * TICK_MS / 1000)).toFixed(0) });
   } else {
     app.els.hudLimit.textContent = '';
   }
-  app.els.boardDesc.textContent = app.renderer.describeState(st, s.level);
+  app.els.boardDesc.textContent = app.renderer.describeState(st, s.level, t, levelName(s.level));
   app.els.hudSync.textContent = syncLabel();
 }
 
 // ---------------------------------------------------------------- screens
 
 function hideOverlay() {
+  app.rerender = null;
   app.els.overlay.hidden = true;
   app.els.overlay.innerHTML = '';
 }
@@ -591,24 +588,42 @@ function screenShell(titleText, desc) {
 
 // ---- title
 
+// Every overlay screen registers how to repaint itself, so a language change
+// re-renders the visible screen in place (same screen, focus kept by position).
+function view(render) { app.rerender = render; }
+
+function relabelScreen() {
+  if (!app.rerender || !app.els.overlay || app.els.overlay.hidden) return;
+  const overlay = app.els.overlay;
+  const focusables = () => [...overlay.querySelectorAll('button, [href], input, select, textarea, [tabindex]')];
+  const idx = focusables().indexOf(document.activeElement);
+  const scroll = overlay.scrollTop;
+  const shellScroll = overlay.firstElementChild ? overlay.firstElementChild.scrollTop : 0;
+  app.rerender();
+  const f = idx >= 0 ? focusables()[idx] : null;
+  if (f) f.focus({ preventScroll: true });
+  overlay.scrollTop = scroll;
+  if (overlay.firstElementChild) overlay.firstElementChild.scrollTop = shellScroll;
+}
+
 function showTitle() {
   setState('title', 'show');
   app.els.hud.hidden = true;
-  const shell = screenShell('Trickstep Tower', 'A clockwork tower of trick steps. Reach each exit; learn every trap.');
+  const shell = screenShell('Trickstep Tower', t('titleDesc'));
   const daily = dailyLevel(new Date(app.platform.now()));
   const journeyDone = Object.keys(app.progress.stars).length;
 
-  const play = el('button', { class: 'btn primary big', text: '▶ Play', onclick: () => { app.audio.ensure(); showModeSelect(); } });
+  const play = el('button', { class: 'btn primary big', 'data-action': 'play', text: t('playBig'), onclick: () => { app.audio.ensure(); showModeSelect(); } });
   const row = el('div', { class: 'btn-row' }, [
-    el('button', { class: 'btn', text: 'Daily — ' + daily.dailyKey, onclick: () => { app.audio.ensure(); startLevel(daily, 'daily'); } }),
-    el('button', { class: 'btn', text: 'Journey (' + journeyDone + '/40)', onclick: () => { app.audio.ensure(); showJourney(); } }),
-    el('button', { class: 'btn', text: 'Settings', onclick: () => showSettings() }),
+    el('button', { class: 'btn', 'data-action': 'daily', text: t('dailyBtn', { key: daily.dailyKey }), onclick: () => { app.audio.ensure(); startLevel(daily, 'daily'); } }),
+    el('button', { class: 'btn', 'data-action': 'journey', text: t('journeyBtn', { n: journeyDone }), onclick: () => { app.audio.ensure(); showJourney(); } }),
+    el('button', { class: 'btn', 'data-action': 'settings', text: t('settings'), onclick: () => showSettings() }),
   ]);
   const row2 = el('div', { class: 'btn-row' }, [
-    el('button', { class: 'btn', text: 'Help & Rules', onclick: () => showHelp() }),
-    el('button', { class: 'btn', text: 'Profile', onclick: () => showProfile() }),
+    el('button', { class: 'btn', 'data-action': 'help', text: t('helpRules'), onclick: () => showHelp() }),
+    el('button', { class: 'btn', 'data-action': 'profile', text: t('profile'), onclick: () => showProfile() }),
   ]);
-  const ptr = platformStrings((navigator && navigator.language) || 'en-US');
+  const ptr = pt;
   if (app.platform.canSignIn()) {
     row2.appendChild(el('button', { class: 'btn', id: 'btn-signin', text: ptr('signIn'), onclick: () => app.platform.signIn() }));
   }
@@ -623,14 +638,17 @@ function showTitle() {
     try {
       const parsed = JSON.parse(snap);
       const ago = Math.round((Date.now() - parsed.savedAt) / 60000);
+      let lvName = parsed.levelId;
+      try { lvName = levelName(levelById(parsed.levelId)); } catch (e) { /* keep the id */ }
       shell.appendChild(el('button', {
-        class: 'btn subtle',
-        text: 'Resume paused run (' + parsed.levelId + ', saved ' + (ago < 1 ? 'just now' : ago + ' min ago') + ')',
+        class: 'btn subtle', 'data-action': 'resume-run',
+        text: t('resumeRun', { level: lvName, ago: ago < 1 ? t('justNow') : t('minAgo', { n: ago }) }),
         onclick: () => resumeSnapshot(parsed),
       }));
     } catch (e) { localStorage.removeItem(SNAPSHOT_KEY); }
   }
   showOverlay(shell, '.btn.primary');
+  view(showTitle);
 }
 
 async function copyInvite(ptr) {
@@ -666,8 +684,10 @@ function resumeSnapshot(parsed) {
     const awayMin = Math.round((Date.now() - parsed.savedAt) / 60000);
     showPlay();
     setState('active', 'snapshot-resume');
-    announce('Welcome back. While you were away (' + (awayMin < 1 ? 'moments' : awayMin + ' minutes') +
-      '), the tower waited — solo play is paused. Score ' + scoreBreakdown(sess.state, level.par).total + ', deaths ' + sess.state.deaths + '.', false);
+    announce(t('welcomeBack', {
+      away: awayMin < 1 ? t('awayMoments') : t('awayMinutes', { n: awayMin }),
+      score: scoreBreakdown(sess.state, level.par).total, deaths: sess.state.deaths,
+    }), false);
   } catch (e) {
     localStorage.removeItem(SNAPSHOT_KEY);
     showTitle();
@@ -688,54 +708,57 @@ function levelById(id) {
 
 // ---- mode select
 
-function modeCard(name, desc, meta, onGo, recommended) {
-  const card = el('div', { class: 'card' + (recommended ? ' recommended' : '') });
+function modeCard(mode, name, desc, meta, onGo, recommended) {
+  const card = el('div', { class: 'card' + (recommended ? ' recommended' : ''), 'data-mode': mode });
   card.appendChild(el('h3', { text: name }));
   card.appendChild(el('p', { class: 'card-desc', text: desc }));
   card.appendChild(el('p', { class: 'meta', text: meta }));
-  card.appendChild(el('button', { class: 'btn primary', text: recommended ? 'Play (recommended)' : 'Play', onclick: onGo }));
+  card.appendChild(el('button', { class: 'btn primary', text: recommended ? t('playRecommended') : t('play'), onclick: onGo }));
   return card;
 }
 
 function showModeSelect() {
   setState('mode-select', 'user');
-  const shell = screenShell('Choose a Mode', 'Each mode lists its rules, expected duration, and whether results are ranked.');
+  const shell = screenShell(t('chooseMode'), t('chooseModeDesc'));
   const grid = el('div', { class: 'card-grid' });
   const daily = dailyLevel(new Date(app.platform.now()));
-  grid.appendChild(modeCard('Learn', 'Five short interactive lessons. One rule at a time — you perform each action.', '5 lessons · ~5 min · unranked', () => showLearn()));
-  grid.appendChild(modeCard('Journey', 'Forty authored stages up the tower. New mechanisms appear one at a time, with mastery stages every eighth floor.', '40 stages · ~1–2 min each · ranked', () => showJourney(), true));
-  grid.appendChild(modeCard('Daily', 'One shared seed and ruleset per UTC day. Same tower for everyone, synchronized to platform time.', '1 stage · ~2 min · ranked daily board', () => startLevel(daily, 'daily')));
-  grid.appendChild(modeCard('Practice', 'Any stage, selectable difficulty, restart and undo freely. Never affects ratings.', 'unranked · undo enabled', () => showPractice()));
-  grid.appendChild(modeCard('Challenge', 'Constrained goals: strict move limits and hard time targets on altered layouts.', '4 challenges · ranked', () => showChallenges()));
-  grid.appendChild(modeCard('Score Chase', 'Global and friends-filtered leaderboards with replay-validated scores.', 'compare scores', () => showLeaderboards()));
+  const card = (mode, key, onGo, rec) => grid.appendChild(modeCard(mode, t(key), t(key + 'Desc'), t(key + 'Meta'), onGo, rec));
+  card('learn', 'modeLearn', () => showLearn());
+  card('journey', 'modeJourney', () => showJourney(), true);
+  card('daily', 'modeDaily', () => startLevel(daily, 'daily'));
+  card('practice', 'modePractice', () => showPractice());
+  card('challenge', 'modeChallenge', () => showChallenges());
+  card('scores', 'modeScores', () => showLeaderboards());
   shell.appendChild(grid);
-  shell.appendChild(el('button', { class: 'btn subtle', text: '← Back', onclick: showTitle }));
+  shell.appendChild(el('button', { class: 'btn subtle', text: t('back'), onclick: showTitle }));
   showOverlay(shell);
+  view(showModeSelect);
 }
 
 // ---- learn
 
 function showLearn() {
   setState('mode-select', 'learn');
-  const shell = screenShell('Learn the Tower', 'Interactive lessons — each introduces exactly one rule and asks you to perform it.');
+  const shell = screenShell(t('learnTitle'), t('learnDesc'));
   const list = el('div', { class: 'list' });
-  for (const t of TUTORIALS) {
-    const done = app.progress.stars[t.id] !== undefined;
-    const item = el('button', { class: 'list-item', onclick: () => startLevel(t, 'learn') });
-    item.appendChild(el('span', { text: (done ? '★ ' : '') + t.name }));
-    item.appendChild(el('small', { text: t.lesson }));
+  for (const lesson of TUTORIALS) {
+    const done = app.progress.stars[lesson.id] !== undefined;
+    const item = el('button', { class: 'list-item', 'data-level': lesson.id, onclick: () => startLevel(lesson, 'learn') });
+    item.appendChild(el('span', { text: (done ? '★ ' : '') + levelName(lesson) }));
+    item.appendChild(el('small', { text: lessonText(lesson).text }));
     list.appendChild(item);
   }
   shell.appendChild(list);
-  shell.appendChild(el('button', { class: 'btn subtle', text: '← Back', onclick: showModeSelect }));
+  shell.appendChild(el('button', { class: 'btn subtle', text: t('back'), onclick: showModeSelect }));
   showOverlay(shell);
+  view(showLearn);
 }
 
 // ---- journey
 
 function showJourney() {
   setState('mode-select', 'journey');
-  const shell = screenShell('Journey — Forty Floors', 'Clear a stage to unlock the next. Mastery stages test combined mechanisms.');
+  const shell = screenShell(t('journeyTitle'), t('journeyDesc'));
   const grid = el('div', { class: 'stage-grid', role: 'list' });
   const maxUnlocked = computeMaxUnlocked();
   for (let i = 0; i < JOURNEY_COUNT; i++) {
@@ -745,7 +768,8 @@ function showJourney() {
     const b = el('button', {
       class: 'stage-cell' + (lv.mastery ? ' mastery' : '') + (locked ? ' locked' : ''),
       role: 'listitem',
-      'aria-label': 'Stage ' + (i + 1) + (lv.mastery ? ' (mastery)' : '') + (best !== undefined ? ', best score ' + best : '') + (locked ? ', locked' : ''),
+      'data-stage': String(i + 1),
+      'aria-label': t('stageN', { n: i + 1 }) + (lv.mastery ? t('masteryTag') : '') + (best !== undefined ? t('bestTag', { n: best }) : '') + (locked ? t('lockedTag') : ''),
       disabled: locked ? 'disabled' : null,
       onclick: () => startLevel(lv, 'journey'),
     });
@@ -753,8 +777,9 @@ function showJourney() {
     grid.appendChild(b);
   }
   shell.appendChild(grid);
-  shell.appendChild(el('button', { class: 'btn subtle', text: '← Back', onclick: showModeSelect }));
+  shell.appendChild(el('button', { class: 'btn subtle', text: t('back'), onclick: showModeSelect }));
   showOverlay(shell);
+  view(showJourney);
 }
 
 function computeMaxUnlocked() {
@@ -767,27 +792,28 @@ function computeMaxUnlocked() {
 
 // ---- practice
 
-function showPractice() {
+function showPractice(keep) {
   setState('mode-select', 'practice');
-  const shell = screenShell('Practice', 'Unranked. Restart and undo (U) freely; nothing here affects competitive boards.');
+  const shell = screenShell(t('practiceTitle'), t('practiceDesc'));
   const form = el('div', { class: 'form' });
-  const sel = el('select', { id: 'practice-stage', 'aria-label': 'Stage' });
+  const sel = el('select', { id: 'practice-stage', 'aria-label': t('stage') });
   for (let i = 0; i < JOURNEY_COUNT; i++) {
-    const o = el('option', { value: String(i), text: 'Stage ' + (i + 1) });
+    const o = el('option', { value: String(i), text: t('stageN', { n: i + 1 }) });
     sel.appendChild(o);
   }
-  const diff = el('select', { id: 'practice-diff', 'aria-label': 'Difficulty' }, [
-    el('option', { value: 'relaxed', text: 'Relaxed — no penalties' }),
-    el('option', { value: 'standard', text: 'Standard', selected: 'selected' }),
-    el('option', { value: 'strict', text: 'Strict — move limit' }),
+  const diff = el('select', { id: 'practice-diff', 'aria-label': t('difficulty') }, [
+    el('option', { value: 'relaxed', text: t('diffRelaxed') }),
+    el('option', { value: 'standard', text: t('diffStandard'), selected: 'selected' }),
+    el('option', { value: 'strict', text: t('diffStrict') }),
   ]);
-  form.appendChild(el('label', { text: 'Stage ', html: '' }));
+  if (keep) { sel.value = keep.stage; diff.value = keep.diff; }
+  form.appendChild(el('label', { text: t('stage') + ' ' }));
   form.lastChild.appendChild(sel);
-  form.appendChild(el('label', { text: 'Difficulty ' }));
+  form.appendChild(el('label', { text: t('difficulty') + ' ' }));
   form.lastChild.appendChild(diff);
   shell.appendChild(form);
   shell.appendChild(el('button', {
-    class: 'btn primary', text: 'Start Practice',
+    class: 'btn primary', 'data-action': 'start-practice', text: t('startPractice'),
     onclick: () => {
       const lv = journeyStage(parseInt(sel.value, 10));
       const d = diff.value;
@@ -796,133 +822,154 @@ function showPractice() {
       startLevel(level, 'practice', { difficulty: d });
     },
   }));
-  shell.appendChild(el('button', { class: 'btn subtle', text: '← Back', onclick: showModeSelect }));
+  shell.appendChild(el('button', { class: 'btn subtle', text: t('back'), onclick: showModeSelect }));
   showOverlay(shell);
+  view(() => showPractice({ stage: sel.value, diff: diff.value }));
 }
 
 // ---- challenges
 
 function showChallenges() {
   setState('mode-select', 'challenge');
-  const shell = screenShell('Challenges', 'Constrained goals on altered layouts. Ranked.');
+  const shell = screenShell(t('challengesTitle'), t('challengesDesc'));
   const list = el('div', { class: 'list' });
   for (const c of CHALLENGES) {
-    const item = el('button', { class: 'list-item', onclick: () => startLevel(challengeLevel(c.id), 'challenge') });
-    item.appendChild(el('span', { text: c.name }));
-    item.appendChild(el('small', { text: c.desc + (c.moveLimit ? ' Move limit: ' + c.moveLimit + '.' : '') + (c.timeLimit ? ' Time limit: ' + (c.timeLimit * TICK_MS / 1000) + 's.' : '') }));
+    const txt = challengeText(c);
+    const item = el('button', { class: 'list-item', 'data-level': c.id, onclick: () => startLevel(challengeLevel(c.id), 'challenge') });
+    item.appendChild(el('span', { text: txt.name }));
+    item.appendChild(el('small', { text: txt.desc + (c.moveLimit ? t('moveLimitTag', { n: c.moveLimit }) : '') + (c.timeLimit ? t('timeLimitTag', { n: c.timeLimit * TICK_MS / 1000 }) : '') }));
     list.appendChild(item);
   }
   shell.appendChild(list);
-  shell.appendChild(el('button', { class: 'btn subtle', text: '← Back', onclick: showModeSelect }));
+  shell.appendChild(el('button', { class: 'btn subtle', text: t('back'), onclick: showModeSelect }));
   showOverlay(shell);
+  view(showChallenges);
 }
 
 // ---- leaderboards (score chase)
 
+const BOARD_KEYS = { daily: 'boardDaily', journey: 'boardJourney', challenge: 'boardChallenge' };
+
 async function showLeaderboards(board) {
   setState('mode-select', 'scores');
   board = board || 'daily';
-  const shell = screenShell('Score Chase', app.platform.hosted
-    ? 'Replay-validated board from the game server; the platform leaderboard is read-only.'
-    : app.platform.online
-      ? 'Replay-validated global boards. Friends filter uses your local friends list.'
-      : 'Offline — showing local casual board (scores not server-validated).');
+  const data = await app.platform.getScores(board);
+  renderLeaderboards(board, data);
+}
+
+function renderLeaderboards(board, data) {
+  const shell = screenShell(t('scoreChase'), app.platform.hosted ? t('lbHosted')
+    : app.platform.online ? t('lbOnline') : t('lbOffline'));
   const tabs = el('div', { class: 'btn-row', role: 'tablist' });
   for (const b of ['daily', 'journey', 'challenge']) {
     tabs.appendChild(el('button', {
       class: 'btn' + (b === board ? ' primary' : ''), role: 'tab', 'aria-selected': b === board ? 'true' : 'false',
-      text: b[0].toUpperCase() + b.slice(1), onclick: () => showLeaderboards(b),
+      'data-board': b, text: t(BOARD_KEYS[b]), onclick: () => showLeaderboards(b),
     }));
   }
   shell.appendChild(tabs);
-  const data = await app.platform.getScores(board);
   const list = el('ol', { class: 'scores' });
   const entries = (data.entries || []).slice(0, 20);
-  if (!entries.length) list.appendChild(el('li', { text: 'No scores yet — be the first.' }));
+  if (!entries.length) list.appendChild(el('li', { text: t('noScores') }));
   for (const e of entries) {
     list.appendChild(el('li', {
-      text: (e.name || 'Guest') + ' — ' + e.score + (e.local ? ' (local)' : '') + (e.meta && e.meta.won === false ? ' (incomplete)' : ''),
+      text: (playerName(e.name || 'Guest')) + ' — ' + e.score + (e.local ? t('localTag') : '') + (e.meta && e.meta.won === false ? t('incompleteTag') : ''),
     }));
   }
   shell.appendChild(list);
-  if (data.validated) shell.appendChild(el('p', { class: 'meta', text: 'Replay-validated board.' }));
-  if (data.casual) shell.appendChild(el('p', { class: 'meta', text: 'Casual board — validation unavailable; plausibility checks only.' }));
-  shell.appendChild(el('button', { class: 'btn subtle', text: '← Back', onclick: showModeSelect }));
+  if (data.validated) shell.appendChild(el('p', { class: 'meta', text: t('validated') }));
+  if (data.casual) shell.appendChild(el('p', { class: 'meta', text: t('casual') }));
+  shell.appendChild(el('button', { class: 'btn subtle', text: t('back'), onclick: showModeSelect }));
   showOverlay(shell);
+  view(() => renderLeaderboards(board, data));
 }
 
 // ---- settings
 
+// Built once per open/tab switch. A language change repaints only this
+// game's own text and controls (tabs, General content, the own graphics box);
+// the shared Language/Sound/FPS/Report sections that game-options.js mounts in
+// the Graphics panel stay in place and relabel themselves.
 function showSettings(returnTo, tab) {
-  const s = app.settings;
-  const tr = gfxStrings((navigator && navigator.language) || 'en-US');
-  const shell = screenShell('Settings', 'Saved locally and synced to the cloud when online.');
+  const shell = screenShell('', '');
   const back = () => (returnTo === 'pause' ? showPause() : showTitle());
   // Tabs: General (audio, palette, accessibility) and Graphics.
-  const tabs = el('div', { class: 'settings-tabs', role: 'tablist', 'aria-label': 'Settings sections' });
+  const tabs = el('div', { class: 'settings-tabs', role: 'tablist' });
   const current = tab === 'graphics' ? 'graphics' : 'general';
-  for (const [id, label] of [['general', tr('tabGeneral')], ['graphics', tr('tabGraphics')]]) {
+  const tabBtns = {};
+  for (const id of ['general', 'graphics']) {
     const b = el('button', {
       class: 'btn tab' + (id === current ? ' active' : ''), role: 'tab', id: 'settings-tab-' + id,
       'data-settings-tab': id, 'aria-selected': id === current ? 'true' : 'false',
-      'aria-controls': 'settings-panel', tabindex: id === current ? '0' : '-1', text: label,
-      onclick: () => { if (id !== current) { showSettings(returnTo, id); const t = document.getElementById('settings-tab-' + id); if (t) t.focus(); } },
+      'aria-controls': 'settings-panel', tabindex: id === current ? '0' : '-1',
+      onclick: () => { if (id !== current) { showSettings(returnTo, id); const tb = document.getElementById('settings-tab-' + id); if (tb) tb.focus(); } },
     });
     b.addEventListener('keydown', (e) => {
       if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
         e.preventDefault();
         const other = id === 'general' ? 'graphics' : 'general';
         showSettings(returnTo, other);
-        const t = document.getElementById('settings-tab-' + other);
-        if (t) t.focus();
+        const tb = document.getElementById('settings-tab-' + other);
+        if (tb) tb.focus();
       }
     });
+    tabBtns[id] = b;
     tabs.appendChild(b);
   }
   shell.appendChild(tabs);
   const wrap = el('div', { class: 'form', id: 'settings-panel', role: 'tabpanel', 'aria-labelledby': 'settings-tab-' + current });
   shell.appendChild(wrap);
-  shell.appendChild(el('button', { class: 'btn subtle', text: '← Back', onclick: back }));
+  const backBtn = el('button', { class: 'btn subtle', onclick: back });
+  shell.appendChild(backBtn);
 
-  if (current === 'graphics') {
-    buildGraphicsPanel(wrap, tr);
-    showOverlay(shell, '#settings-tab-graphics');
-    return;
-  }
+  const own = current === 'graphics' ? el('div', { class: 'tt-gfx-own' }) : wrap;
+  if (current === 'graphics') { wrap.classList.add('gfx-panel'); wrap.appendChild(own); }
+  const paint = () => {
+    shell.querySelector('#screen-title').textContent = t('settings');
+    let desc = shell.querySelector('.screen-desc');
+    if (!desc) { desc = el('p', { class: 'screen-desc' }); shell.insertBefore(desc, tabs); }
+    desc.textContent = t('settingsDesc');
+    tabs.setAttribute('aria-label', t('settingsSections'));
+    tabBtns.general.textContent = gt('tabGeneral');
+    tabBtns.graphics.textContent = gt('tabGraphics');
+    backBtn.textContent = t('back');
+    if (current === 'graphics') buildGraphicsPanel(own);
+    else buildGeneralPanel(own);
+  };
+  paint();
+  showOverlay(shell, current === 'graphics' ? '#settings-tab-graphics' : undefined);
+  view(paint);
+}
 
-  const h3a = el('h3', { text: 'Audio' });
-  wrap.appendChild(h3a);
+function buildGeneralPanel(wrap) {
+  const s = app.settings;
+  wrap.replaceChildren();
+  wrap.appendChild(el('h3', { text: t('audio') }));
   for (const bus of BUS_NAMES) {
     const row = el('label', { class: 'slider-row' });
-    row.appendChild(el('span', { text: bus[0].toUpperCase() + bus.slice(1) }));
-    const input = el('input', { type: 'range', min: '0', max: '1', step: '0.05', value: String(s.volumes[bus]), 'aria-label': bus + ' volume' });
+    const name = t('bus' + bus[0].toUpperCase() + bus.slice(1));
+    row.appendChild(el('span', { text: name }));
+    const input = el('input', { type: 'range', min: '0', max: '1', step: '0.05', value: String(s.volumes[bus]), 'data-bus': bus, 'aria-label': t('busVolume', { bus: name }) });
     input.addEventListener('input', () => { app.audio.setVolume(bus, parseFloat(input.value)); saveSettings(); });
     row.appendChild(input);
     wrap.appendChild(row);
   }
 
-  wrap.appendChild(el('h3', { text: 'Display' }));
-  const palSel = el('select', { 'aria-label': 'Color palette' });
-  for (const p of ['default', 'deuteranopia', 'protanopia', 'tritanopia', 'mono']) palSel.appendChild(el('option', { value: p, text: p, selected: s.palette === p ? 'selected' : null }));
+  wrap.appendChild(el('h3', { text: t('display') }));
+  const palSel = el('select', { 'data-setting': 'palette', 'aria-label': t('palette') });
+  const PAL = { default: 'palDefault', deuteranopia: 'palDeuteranopia', protanopia: 'palProtanopia', tritanopia: 'palTritanopia', mono: 'palMono' };
+  for (const p of Object.keys(PAL)) palSel.appendChild(el('option', { value: p, text: t(PAL[p]), selected: s.palette === p ? 'selected' : null }));
   palSel.addEventListener('change', () => { s.palette = palSel.value; applyA11yClasses(); saveSettings(); });
-  wrap.appendChild(labeled('Color-vision palette', palSel));
+  wrap.appendChild(labeled(t('palette'), palSel));
 
-  wrap.appendChild(el('h3', { text: 'Accessibility & Controls' }));
-  const toggles = [
-    ['reducedMotion', 'Reduced motion (no shake, swoops, or heavy particles)'],
-    ['highContrast', 'High contrast'],
-    ['largeText', 'Larger text'],
-    ['leftHanded', 'Left-handed touch controls'],
-    ['haptics', 'Haptics (vibration)'],
-  ];
-  for (const [key, label] of toggles) {
-    const cb = el('input', { type: 'checkbox', 'aria-label': label });
+  wrap.appendChild(el('h3', { text: t('a11y') }));
+  for (const key of ['reducedMotion', 'highContrast', 'largeText', 'leftHanded', 'haptics']) {
+    const cb = el('input', { type: 'checkbox', 'data-setting': key, 'aria-label': t(key) });
     cb.checked = !!s[key];
     cb.addEventListener('change', () => { s[key] = cb.checked; applyA11yClasses(); saveSettings(); });
-    wrap.appendChild(labeled(label, cb));
+    wrap.appendChild(labeled(t(key), cb));
   }
-  wrap.appendChild(el('button', { class: 'btn', text: 'Replay tutorials', onclick: () => showLearn() }));
-  showOverlay(shell);
+  wrap.appendChild(el('button', { class: 'btn', 'data-action': 'replay-tutorials', text: t('replayTutorials'), onclick: () => showLearn() }));
 }
 
 // ---- graphics panel (inside Settings → Graphics)
@@ -944,15 +991,17 @@ function gfxRow(label, control, id) {
   return row;
 }
 
-function buildGraphicsPanel(wrap, tr) {
-  wrap.innerHTML = '';
-  wrap.classList.add('gfx-panel');
+// Fills the game's own graphics box; rebuilt on change and on language change
+// without touching the shared sections mounted next to it.
+function buildGraphicsPanel(wrap) {
+  const tr = gt;
+  wrap.replaceChildren();
   const g = currentGfx();
   const info = app.renderer.graphicsInfo();
   const presetName = (p) => tr('preset_' + p);
   const rebuild = () => {
     const focusId = document.activeElement && document.activeElement.id;
-    buildGraphicsPanel(wrap, tr);
+    buildGraphicsPanel(wrap);
     const f = focusId && document.getElementById(focusId);
     if (f) f.focus();
   };
@@ -972,7 +1021,7 @@ function buildGraphicsPanel(wrap, tr) {
   scale.addEventListener('input', () => { scaleOut.textContent = scale.value + '%'; });
   scale.addEventListener('change', () => {
     applyGfx(Object.assign(currentGfx(), { render_scale: Number(scale.value) / 100 }));
-    refreshGfxSummary(tr);
+    refreshGfxSummary();
   });
   const scaleBox = el('span', { class: 'gfx-scale' }, [scale, scaleOut]);
   wrap.appendChild(gfxRow(tr('renderScale'), scaleBox, 'gfx-scale'));
@@ -984,28 +1033,35 @@ function buildGraphicsPanel(wrap, tr) {
     const ov = g.overrides && g.overrides[cat];
     sel.appendChild(el('option', { value: '', text: tr('fromPreset', { tier: tr('tier_' + presetTier(resolvedPreset, cat)) }), selected: ov ? null : 'selected' }));
     for (const t of tiers) sel.appendChild(el('option', { value: t, text: tr('tier_' + t), selected: ov === t ? 'selected' : null }));
-    sel.addEventListener('change', () => { applyGfx(setOverride(currentGfx(), cat, sel.value)); refreshGfxSummary(tr); });
+    sel.addEventListener('change', () => { applyGfx(setOverride(currentGfx(), cat, sel.value)); refreshGfxSummary(); });
     wrap.appendChild(gfxRow(tr('cat_' + cat), sel, 'gfx-' + cat));
   }
 
   for (const [key, id, label, on] of [['adaptive', 'gfx-adaptive', tr('adaptive'), g.adaptive !== false], ['show_fps', 'gfx-fps', tr('showFps'), !!g.show_fps]]) {
     const cb = el('input', { type: 'checkbox', id, 'data-gfx': key });
     cb.checked = on;
-    cb.addEventListener('change', () => { applyGfx(Object.assign(currentGfx(), { [key]: cb.checked })); refreshGfxSummary(tr); });
+    cb.addEventListener('change', () => { applyGfx(Object.assign(currentGfx(), { [key]: cb.checked })); refreshGfxSummary(); });
     wrap.appendChild(gfxRow(label, cb, id));
   }
 
   wrap.appendChild(el('p', { class: 'meta gfx-summary', id: 'gfx-summary', 'aria-live': 'polite' }));
   wrap.appendChild(el('p', { class: 'meta gfx-note', id: 'gfx-post-note', hidden: 'hidden', text: tr('postUnavailable') }));
-  refreshGfxSummary(tr);
+  refreshGfxSummary();
 }
 
 // The canvas size/post chain update on the next frame, so read back after it.
-function refreshGfxSummary(tr) {
+const GFX_WORD_KEYS = ['noShadows', 'shadows', 'fullAo', 'ao', 'bloom', 'grade', 'noAa', 'denseParticles', 'unknownGpu'];
+function gfxWords() {
+  const w = {};
+  for (const k of GFX_WORD_KEYS) w[k] = t('gfx' + k[0].toUpperCase() + k.slice(1));
+  return w;
+}
+
+function refreshGfxSummary() {
   const write = () => {
     const out = document.getElementById('gfx-summary');
     if (!out || !app.renderer) return;
-    const info = app.renderer.graphicsInfo();
+    const info = app.renderer.graphicsInfo(gfxWords());
     out.textContent = info.gpu + ' · ' + info.summary;
     out.dataset.preset = info.resolved.preset;
     const note = document.getElementById('gfx-post-note');
@@ -1067,66 +1123,60 @@ function applyA11yClasses() {
 
 // ---- profile
 
-function showProfile() {
+function showProfile(draft) {
   const hosted = app.platform.hosted;
-  const shell = screenShell('Profile', hosted
-    ? 'Signed in to StarHermit as “' + app.platform.playerName + '”.'
-    : app.platform.online ? 'Connected to the StarHermit host.' : 'Guest mode — progress is stored locally.');
+  const shell = screenShell(t('profile'), hosted
+    ? t('signedInAs', { name: playerName(app.platform.playerName) })
+    : app.platform.online ? t('connectedHost') : t('guestMode'));
+  let nameInput = null;
   if (hosted) {
     // The name comes from the StarHermit profile; there is nothing to edit.
-    shell.appendChild(el('p', { class: 'meta', text: 'Display name comes from your StarHermit profile.' }));
+    shell.appendChild(el('p', { class: 'meta', text: t('nameFromProfile') }));
   } else {
-    const nameInput = el('input', { type: 'text', value: app.platform.playerName, maxlength: '24', 'aria-label': 'Display name' });
-    shell.appendChild(labeled('Display name', nameInput));
+    const stored = app.platform.playerName === 'Guest' ? '' : app.platform.playerName;
+    nameInput = el('input', { type: 'text', value: draft != null ? draft : stored, placeholder: t('guest'), maxlength: '24', 'aria-label': t('displayName') });
+    shell.appendChild(labeled(t('displayName'), nameInput));
     shell.appendChild(el('button', {
-      class: 'btn', text: 'Save name',
+      class: 'btn', 'data-action': 'save-name', text: t('saveName'),
       onclick: () => {
         app.platform.playerName = nameInput.value.trim() || 'Guest';
         localStorage.setItem('tt-name', app.platform.playerName);
-        announce('Name saved.');
+        announce(t('nameSaved'));
         showTitle();
       },
     }));
   }
   shell.appendChild(el('p', { class: 'meta', text: syncLabel() }));
   const p = app.progress;
-  shell.appendChild(el('p', { text: 'Stages cleared: ' + Object.keys(p.stars).length + ' / 40 · Total clears: ' + p.clears + ' · Daily streak: ' + p.streak.count }));
+  shell.appendChild(el('p', { text: t('statsLine', { n: Object.keys(p.stars).length, clears: p.clears, streak: p.streak.count }) }));
   const ach = el('ul', { class: 'achievements' });
   for (const a of ACHIEVEMENTS) {
     const got = p.achievements[a.key];
-    ach.appendChild(el('li', { text: (got ? '★ ' : '☆ ') + a.name + ' — ' + a.desc + (got ? ' (' + got.slice(0, 10) + ')' : ''), class: got ? 'got' : '' }));
+    ach.appendChild(el('li', { text: (got ? '★ ' : '☆ ') + t(a.name) + ' — ' + t(a.name + 'Desc') + (got ? ' (' + got.slice(0, 10) + ')' : ''), class: got ? 'got' : '' }));
   }
-  shell.appendChild(el('h3', { text: 'Achievements' }));
+  shell.appendChild(el('h3', { text: t('achievements') }));
   shell.appendChild(ach);
-  shell.appendChild(el('button', { class: 'btn subtle', text: '← Back', onclick: showTitle }));
+  shell.appendChild(el('button', { class: 'btn subtle', text: t('back'), onclick: showTitle }));
   showOverlay(shell);
+  view(() => showProfile(nameInput ? nameInput.value : undefined));
 }
 
 // ---- help
 
 function showHelp() {
-  const shell = screenShell('Help & Rules', 'Rule cards reflect your current control mappings.');
+  const shell = screenShell(t('helpRules'), t('helpDesc'));
   const cards = el('div', { class: 'card-grid' });
-  const ruleCards = [
-    ['Goal', 'Guide your wind-up climber to the glowing exit door on each floor of the tower.'],
-    ['Move', 'Walk with ' + keysFor('left') + ' (left) and ' + keysFor('right') + ' (right). On touch, hold the arrow pads. Gamepad: left stick or D-pad.'],
-    ['Jump', 'Press ' + keysFor('jump') + ' — or the JUMP pad — while on the ground. Jumping in mid-air is an invalid action and costs score.'],
-    ['Trick steps', 'Some floors are decoys: they shimmer once touched, then you fall through. They never change — learn them.'],
-    ['Vanishing platforms', 'Paler platforms fade in and out on a fixed, deterministic rhythm. Watch a full cycle before crossing.'],
-    ['Hazards', 'Red spikes and long falls rewind you to the last checkpoint flag. Retries are instant and unlimited.'],
-    ['Gears', 'Golden gears are optional collectibles worth 150 points each.'],
-    ['Score', 'Completion 1000 + gears + time/move bonuses − 40 per death − 5 per invalid action. Results show the full breakdown.'],
-    ['Pause / retry', keysFor('pause') + ' pauses. ' + keysFor('retry') + ' retries instantly. ' + keysFor('camera') + ' resets the camera. ' + keysFor('undo') + ' undoes in Practice.'],
-  ];
-  for (const [t, d] of ruleCards) {
+  const keys = { left: keysFor('left'), right: keysFor('right'), jump: keysFor('jump'), pause: keysFor('pause'), retry: keysFor('retry'), camera: keysFor('camera'), undo: keysFor('undo') };
+  for (const k of ['Goal', 'Move', 'Jump', 'Trick', 'Vanish', 'Hazards', 'Gears', 'Score', 'Pause']) {
     const c = el('div', { class: 'card' });
-    c.appendChild(el('h3', { text: t }));
-    c.appendChild(el('p', { text: d }));
+    c.appendChild(el('h3', { text: t('rule' + k) }));
+    c.appendChild(el('p', { text: t('rule' + k + 'Text', keys) }));
     cards.appendChild(c);
   }
   shell.appendChild(cards);
-  shell.appendChild(el('button', { class: 'btn subtle', text: '← Back', onclick: showTitle }));
+  shell.appendChild(el('button', { class: 'btn subtle', text: t('back'), onclick: showTitle }));
   showOverlay(shell);
+  view(showHelp);
 }
 
 // ---- play (HUD only; overlay hidden)
@@ -1134,39 +1184,86 @@ function showHelp() {
 function showPlay() {
   hideOverlay();
   app.els.hud.hidden = false;
-  app.els.hudObjective.textContent = 'Objective: reach the exit — ' + (app.session.level.name || '');
-  app.els.hudLesson.textContent = app.session.level.lesson || '';
   app.els.undoBtn.hidden = app.session.mode !== 'practice';
-  updateHud();
+  relabelHud();
+}
+
+// Static HUD/touch labels plus the per-level objective, in the current language.
+function relabelHud() {
+  const E = app.els;
+  if (!E.hud) return;
+  for (const n of document.querySelectorAll('#app [data-i18n]')) n.textContent = t(n.dataset.i18n);
+  for (const n of document.querySelectorAll('#app [data-i18n-aria]')) n.setAttribute('aria-label', t(n.dataset.i18nAria));
+  const level = app.session && app.session.level;
+  E.hudObjective.textContent = level ? t('hudObjective', { name: levelName(level) }) : '';
+  E.hudLesson.textContent = level && level.lesson ? lessonText(level).text : '';
+  if (app.session) updateHud();
 }
 
 // ---- pause
 
 function showPause() {
-  const shell = screenShell('Paused', app.session ? app.session.level.name : '');
-  shell.appendChild(el('button', { class: 'btn primary big', text: 'Resume', onclick: resumeGame }));
+  const shell = screenShell(t('paused'), app.session ? levelName(app.session.level) : '');
+  shell.appendChild(el('button', { class: 'btn primary big', 'data-action': 'resume', text: t('resume'), onclick: resumeGame }));
   shell.appendChild(el('div', { class: 'btn-row' }, [
-    el('button', { class: 'btn', text: 'Retry (R)', onclick: retryLevel }),
-    el('button', { class: 'btn', text: 'Settings', onclick: () => showSettings('pause') }),
-    el('button', { class: 'btn', text: 'Help', onclick: showHelp }),
+    el('button', { class: 'btn', 'data-action': 'retry', text: t('retryR'), onclick: retryLevel }),
+    el('button', { class: 'btn', 'data-action': 'settings', text: t('settings'), onclick: () => showSettings('pause') }),
+    el('button', { class: 'btn', 'data-action': 'help', text: t('help'), onclick: showHelp }),
   ]));
-  shell.appendChild(el('button', { class: 'btn subtle', text: 'Leave level', onclick: leaveToTitle }));
+  shell.appendChild(el('button', { class: 'btn subtle', 'data-action': 'leave', text: t('leaveLevel'), onclick: leaveToTitle }));
   showOverlay(shell, '.btn.primary');
+  view(showPause);
 }
 
 // ---- results
 
-async function showResults(sess) {
+const REASON_KEYS = { exit: 'reasonExit', 'move-limit': 'reasonMoveLimit', 'time-limit': 'reasonTimeLimit' };
+
+// Results: progression and score submission run once; the screen itself is
+// painted from sess.view so a language change can repaint it in place.
+function showResults(sess) {
   setState('results', sess.result.reason);
   const r = sess.result;
   const b = r.breakdown;
-  const shell = screenShell(r.won ? 'Floor Cleared!' : 'Attempt Over', sess.level.name);
+  announce(t(r.won ? 'announceWon' : 'announceLost', { n: b.total }), true);
+  const newly = updateProgress(sess);
+  for (let i = 0; i < newly.length; i++) app.audio.event('achievement');
+  sess.view = { newly, lb: null };
+  if (sess.ranked && r.won) {
+    const hosted = app.platform.hosted;
+    sess.view.lb = hosted ? { key: 'lbPosting', platform: true } : { key: 'savedLocalCasual' };
+    const pending = app.platform.submitScore(
+      sess.mode, sess.level.id, b, sess.envelope(),
+      { won: r.won, assists: sess.mode === 'practice', version: CONTENT_VERSION, seed: sess.level.seed, durationMs: r.durationMs }
+    );
+    // Hosted: the StarHermit high-score board; replace the pending line in place.
+    if (hosted) {
+      pending.then((res) => {
+        sess.view.lb = !res.posted ? { key: 'lbNotPosted', platform: true }
+          : res.rank ? { key: 'lbRank', vars: { rank: res.rank }, platform: true } : { key: 'lbPosted', platform: true };
+        const line = sess.view.lbEl;
+        if (line && line.isConnected) line.textContent = lbText(sess.view.lb);
+      });
+    }
+  } else if (!sess.ranked) {
+    sess.view.lb = { key: 'unrankedNoSubmit' };
+  }
+  app.platform.funnel('round-end', { level: sess.level.id, won: r.won, score: b.total });
+  renderResults(sess);
+  localStorage.removeItem(SNAPSHOT_KEY);
+}
 
+function lbText(lb) { return lb.platform ? pt(lb.key, lb.vars) : t(lb.key, lb.vars); }
+
+function renderResults(sess) {
+  const r = sess.result;
+  const b = r.breakdown;
+  const shell = screenShell(t(r.won ? 'floorCleared' : 'attemptOver'), levelName(sess.level));
   const table = el('table', { class: 'breakdown' });
   const rows = [
-    ['Completion', b.completion], ['Gears (' + b.gearCount + ')', b.gears],
-    ['Time bonus', b.timeBonus], ['Move bonus', b.moveBonus],
-    ['Death penalty', -b.deathPenalty], ['Invalid-action penalty', -b.invalidPenalty],
+    [t('rowCompletion'), b.completion], [t('rowGears', { n: b.gearCount }), b.gears],
+    [t('rowTime'), b.timeBonus], [t('rowMove'), b.moveBonus],
+    [t('rowDeath'), -b.deathPenalty], [t('rowInvalid'), -b.invalidPenalty],
   ];
   for (const [k, v] of rows) {
     const tr = el('tr');
@@ -1175,53 +1272,34 @@ async function showResults(sess) {
     table.appendChild(tr);
   }
   const total = el('tr', { class: 'total' });
-  total.appendChild(el('td', { text: 'Total' }));
+  total.appendChild(el('td', { text: t('total') }));
   total.appendChild(el('td', { text: String(b.total) }));
   table.appendChild(total);
   shell.appendChild(table);
-  shell.appendChild(el('p', { class: 'meta', text: 'Reason: ' + r.reason + ' · Time: ' + (r.ticks * TICK_MS / 1000).toFixed(1) + 's · Deaths: ' + sess.state.deaths }));
-  announce((r.won ? 'Level complete. ' : 'Attempt over. ') + 'Score ' + b.total + '.', true);
-
-  // Progression
-  const newly = updateProgress(sess);
-  for (const key of newly) {
-    const a = ACHIEVEMENTS.find(a => a.key === key);
-    shell.appendChild(el('p', { class: 'achievement-pop', text: '★ Achievement unlocked: ' + a.name }));
-    app.audio.event('achievement');
+  shell.appendChild(el('p', { class: 'meta', text: t('resultMeta', {
+    reason: REASON_KEYS[r.reason] ? t(REASON_KEYS[r.reason]) : r.reason,
+    time: (r.ticks * TICK_MS / 1000).toFixed(1), deaths: sess.state.deaths,
+  }) }));
+  for (const key of sess.view.newly) {
+    const a = ACHIEVEMENTS.find(x => x.key === key);
+    shell.appendChild(el('p', { class: 'achievement-pop', text: t('achievementUnlocked', { name: t(a.name) }) }));
   }
-
-  // Score submission
-  if (sess.ranked && r.won) {
-    const pt = platformStrings((navigator && navigator.language) || 'en-US');
-    const hosted = app.platform.hosted;
-    const status = el('p', { class: 'meta lb-line', text: hosted ? pt('lbPosting') : 'Saved locally (casual board).' });
-    status.setAttribute('aria-live', 'polite');
-    shell.appendChild(status);
-    const pending = app.platform.submitScore(
-      sess.mode, sess.level.id, b, sess.envelope(),
-      { won: r.won, assists: sess.mode === 'practice', version: CONTENT_VERSION, seed: sess.level.seed, durationMs: r.durationMs }
-    );
-    // Hosted: the StarHermit high-score board; replace the pending line in place.
-    if (hosted) {
-      pending.then((res) => {
-        status.textContent = !res.posted ? pt('lbNotPosted')
-          : res.rank ? pt('lbRank', { rank: res.rank }) : pt('lbPosted');
-      });
-    }
-  } else if (!sess.ranked) {
-    shell.appendChild(el('p', { class: 'meta', text: 'Unranked mode — no leaderboard submission.' }));
+  const lb = sess.view.lb;
+  if (lb) {
+    const line = el('p', { class: 'meta' + (sess.ranked ? ' lb-line' : ''), text: lbText(lb) });
+    if (sess.ranked) { line.setAttribute('aria-live', 'polite'); sess.view.lbEl = line; }
+    shell.appendChild(line);
   }
 
   // Next actions
   const row = el('div', { class: 'btn-row' });
-  row.appendChild(el('button', { class: 'btn primary', text: r.won ? 'Next →' : 'Retry (R)', onclick: () => nextAction(sess) }));
-  row.appendChild(el('button', { class: 'btn', text: 'Replay level', onclick: retryLevel }));
-  row.appendChild(el('button', { class: 'btn', text: 'Scores', onclick: () => showLeaderboards(sess.mode === 'learn' || sess.mode === 'practice' ? 'journey' : sess.mode) }));
+  row.appendChild(el('button', { class: 'btn primary', 'data-action': r.won ? 'next' : 'retry', text: r.won ? t('next') : t('retryR'), onclick: () => nextAction(sess) }));
+  row.appendChild(el('button', { class: 'btn', 'data-action': 'replay', text: t('replayLevel'), onclick: retryLevel }));
+  row.appendChild(el('button', { class: 'btn', 'data-action': 'scores', text: t('scores'), onclick: () => showLeaderboards(sess.mode === 'learn' || sess.mode === 'practice' ? 'journey' : sess.mode) }));
   shell.appendChild(row);
-  shell.appendChild(el('button', { class: 'btn subtle', text: 'Leave', onclick: leaveToTitle }));
-  app.platform.funnel('round-end', { level: sess.level.id, won: r.won, score: b.total });
+  shell.appendChild(el('button', { class: 'btn subtle', 'data-action': 'leave', text: t('leave'), onclick: leaveToTitle }));
   showOverlay(shell, '.btn.primary');
-  localStorage.removeItem(SNAPSHOT_KEY);
+  view(() => renderResults(sess));
 }
 
 function nextAction(sess) {
@@ -1289,28 +1367,28 @@ function buildShell() {
     '<div class="hud-top">' +
     '  <div class="hud-group"><span id="hud-objective"></span><span id="hud-lesson"></span></div>' +
     '  <div class="hud-group stats">' +
-    '    <span>Score <b id="hud-score">0</b></span>' +
-    '    <span>Gears <b id="hud-gears">0 / 0</b></span>' +
-    '    <span>Deaths <b id="hud-deaths">0</b></span>' +
-    '    <span>Time <b id="hud-time">0.0s</b></span>' +
+    '    <span><span data-i18n="hudScore"></span> <b id="hud-score">0</b></span>' +
+    '    <span><span data-i18n="hudGears"></span> <b id="hud-gears">0 / 0</b></span>' +
+    '    <span><span data-i18n="hudDeaths"></span> <b id="hud-deaths">0</b></span>' +
+    '    <span><span data-i18n="hudTime"></span> <b id="hud-time">0.0s</b></span>' +
     '    <span id="hud-limit"></span>' +
     '  </div>' +
     '  <div class="hud-group"><span id="hud-sync" class="sync-status"></span>' +
-    '  <button id="btn-pause" class="btn small">Pause (Esc)</button>' +
-    '  <button id="btn-undo" class="btn small" hidden>Undo (U)</button></div>' +
+    '  <button id="btn-pause" class="btn small" data-i18n="pauseBtn"></button>' +
+    '  <button id="btn-undo" class="btn small" data-i18n="undoBtn" hidden></button></div>' +
     '</div>';
   const overlay = el('div', { id: 'overlay', role: 'dialog', 'aria-modal': 'false' });
   const countdown = el('div', { id: 'countdown', hidden: 'hidden', 'aria-hidden': 'true' });
   const touch = el('div', { id: 'touch-controls' });
   touch.innerHTML =
     '<div class="pad move-pad">' +
-    '  <button class="touch-btn" data-hold="left" aria-label="Move left">◀</button>' +
-    '  <button class="touch-btn" data-hold="right" aria-label="Move right">▶</button>' +
+    '  <button class="touch-btn" data-hold="left" data-i18n-aria="moveLeft">◀</button>' +
+    '  <button class="touch-btn" data-hold="right" data-i18n-aria="moveRight">▶</button>' +
     '</div>' +
-    '<div class="pad jump-pad"><button class="touch-btn jump" data-jump aria-label="Jump">JUMP</button></div>';
+    '<div class="pad jump-pad"><button class="touch-btn jump" data-jump data-i18n-aria="jump" data-i18n="jumpPad"></button></div>';
   const live = el('div', { id: 'live', class: 'visually-hidden', role: 'status', 'aria-live': 'polite' });
   const liveAssert = el('div', { id: 'live-assert', class: 'visually-hidden', role: 'alert', 'aria-live': 'assertive' });
-  const boardDesc = el('div', { id: 'board-desc', class: 'visually-hidden', 'aria-label': 'Board state' });
+  const boardDesc = el('div', { id: 'board-desc', class: 'visually-hidden', 'data-i18n-aria': 'boardState' });
   const captions = el('div', { id: 'captions', 'aria-hidden': 'true' });
   const toastEl = el('div', { id: 'toast', class: 'toast', hidden: 'hidden', 'aria-hidden': 'true' });
 
@@ -1339,6 +1417,15 @@ function buildShell() {
   };
   hud.querySelector('#btn-pause').addEventListener('click', () => (app.state === 'paused' ? resumeGame() : pauseGame()));
   app.els.undoBtn.addEventListener('click', () => app.session && app.session.undo());
+  relabelHud();
+}
+
+// Language change: relabel the shell/HUD and repaint the visible screen.
+function relabelAll() {
+  const root = document.getElementById('app');
+  if (root) root.setAttribute('aria-label', t('gameLabel'));
+  relabelHud();
+  relabelScreen();
 }
 
 function onResize() {
@@ -1353,17 +1440,19 @@ async function boot() {
   buildShell();
   applyA11yClasses();
   app.audio = new AudioEngine(app.settings);
-  app.audio.captionSink = (text) => {
-    app.els.captions.textContent = '♪ ' + text;
+  app.audio.captionSink = (text, name) => {
+    const key = name ? 'cap' + name[0].toUpperCase() + name.slice(1) : '';
+    app.els.captions.textContent = '♪ ' + (key && t(key) !== key ? t(key) : text);
     clearTimeout(app.audio._capTimer);
     app.audio._capTimer = setTimeout(() => { app.els.captions.textContent = ''; }, 1800);
   };
   try {
     app.renderer = new Renderer(app.els.canvas, app.settings);
   } catch (e) {
-    document.getElementById('app').innerHTML =
-      '<main class="compat"><h1>Trickstep Tower</h1><p>This device or browser does not support WebGL, which the tower needs to render. ' +
-      'Your settings and progress are preserved for your next visit.</p></main>';
+    const root = document.getElementById('app');
+    const compat = el('main', { class: 'compat' }, [el('h1', { text: 'Trickstep Tower' }), el('p', { text: t('compatText') })]);
+    root.replaceChildren(compat);
+    onLanguage(() => { compat.lastChild.textContent = t('compatText'); });
     return;
   }
   onResize();
@@ -1384,15 +1473,33 @@ async function boot() {
     app.renderer.setGraphicsSettings(currentGfx());
   }
   app.platform.onAuthChange = () => {
-    toast(platformStrings((navigator && navigator.language) || 'en-US')('signedOut'));
+    toast(pt('signedOut'));
     if (app.state === 'title') showTitle();
   };
-  // Remote-preferred cloud load: when the platform slot held a newer save,
-  // adopt it over the local cache before the first screen renders.
+  // Cloud load: merge the platform slot with the local cache (best scores,
+  // earliest unlocks, longest streak) before the first screen renders, and
+  // write the union back when it adds anything the cloud lacked.
   if (app.platform.cloudDoc && app.platform.cloudDoc.progress && typeof app.platform.cloudDoc.progress === 'object') {
-    app.progress = Object.assign(structuredClone(DEFAULT_PROGRESS), app.platform.cloudDoc.progress);
+    const merged = Object.assign(structuredClone(DEFAULT_PROGRESS), mergeProgress(app.progress, app.platform.cloudDoc.progress));
+    const canon = (o) => JSON.stringify(o, (k, v) => (v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort()) : v));
+    const cloudBehind = canon(mergeProgress(app.platform.cloudDoc.progress, {})) !== canon(mergeProgress(merged, {}));
+    app.progress = merged;
     store(PROGRESS_KEY, app.progress);
+    if (cloudBehind) app.platform.saveCloud({ progress: app.progress, savedAt: Date.now() });
   }
+  // A write rejected because another device saved first: merge both sides
+  // and save again (the SDK re-reads the slot so the retry is conditional on
+  // the fresh version).
+  app.platform.onSaveConflict = (remote) => {
+    const theirs = remote && remote.progress && typeof remote.progress === 'object' ? remote.progress : {};
+    app.progress = Object.assign(structuredClone(DEFAULT_PROGRESS), mergeProgress(app.progress, theirs));
+    store(PROGRESS_KEY, app.progress);
+    app.platform.saveCloud({ progress: app.progress, savedAt: Date.now() });
+    toast(t('progressMerged'));
+    relabelScreen();
+  };
+  onLanguage(relabelAll);
+  relabelAll();
   // Idle scene behind the title screen.
   app.renderer.loadLevel(journeyStage(0), THEMES[0].id);
   requestAnimationFrame(frame);

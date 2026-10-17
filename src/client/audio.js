@@ -53,7 +53,7 @@ export class AudioEngine {
     this._musicTimer = null;
     this._ambNodes = [];
     this._sampleCache = new Map(); // sample name → AudioBuffer | Promise | null (failed)
-    this.captionSink = null; // (text) => void, set by UI for captions
+    this.captionSink = null; // (text, eventName) => void, set by UI for captions (localized there by event name)
   }
 
   // Must be called from a user gesture.
@@ -85,7 +85,7 @@ export class AudioEngine {
   suspend() { if (this.ctx && this.ctx.state === 'running') this.ctx.suspend(); }
   resume() { if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume(); }
 
-  _caption(text) { if (this.captionSink) this.captionSink(text); }
+  _caption(text, name) { if (this.captionSink) this.captionSink(text, name); }
 
   _tone(bus, freq, dur, type, gain, when, slide) {
     if (!this.ctx) return;
@@ -151,9 +151,9 @@ export class AudioEngine {
   // Logical event → transient. Prefers the authored sample; synthesized
   // fallback runs only while the sample loads or after it failed.
   event(name) {
-    if (!this.started || !this.ctx || this.ctx.state !== 'running') { this._caption(name); return; }
+    if (!this.started || !this.ctx || this.ctx.state !== 'running') { this._caption(name, name); return; }
     if (!this._trySample(name)) this._synthEvent(name);
-    if (CAPTIONS[name]) this._caption(CAPTIONS[name]);
+    if (CAPTIONS[name]) this._caption(CAPTIONS[name], name);
   }
 
   // Synthesized transient per event. Seeded pitch variant per call for replay consistency.
