@@ -19,7 +19,7 @@ import { TILE, moverOffset, isVanishSolid, makeRng, PLAYER_W, PLAYER_H } from '.
 import { THEMES } from '../content.js';
 
 const REASON_KEYS = { exit: 'reasonExit', 'move-limit': 'reasonMoveLimit', 'time-limit': 'reasonTimeLimit' };
-import { detectPreset, resolve, describe, SHADOW_MAP, PARTICLE_BUDGET, DUST_MOTES, DEFAULT_GFX } from './gfx.js';
+import { detectLevel, presetForLevel, resolve, describe, particleBudget, SHADOW_MAP, DEFAULT_GFX } from './gfx.js';
 
 const LAYER_ENV = 0, LAYER_GAME = 1, LAYER_FX = 2;
 
@@ -65,7 +65,14 @@ export class Renderer {
     this.renderer.toneMappingExposure = 1.0;
 
     this.gpu = this._gpuName();
-    this.detected = detectPreset(this.gpu, { mobile: isMobileDevice() });
+    // StarHermit hardware level (gpu-level.js): renderer string + device facts (phone/tablet, cores, memory).
+    let sys = { mobile: isMobileDevice() };
+    try {
+      const G = globalThis.StarHermitGpu;
+      if (G) { const d = G.detectSystem(); sys = Object.assign({}, d, { mobile: sys.mobile || d.mobile }); delete sys.gpu; }
+    } catch (e) { /* defaults */ }
+    this.gpuLevel = detectLevel(this.gpu, sys);
+    this.detected = presetForLevel(this.gpuLevel);
 
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(34, 1, 0.1, 200);
@@ -137,7 +144,7 @@ export class Renderer {
   /** Apply saved graphics settings live (no reload). */
   setGraphicsSettings(saved) {
     const prev = this.q;
-    const g = resolve(saved, this.detected);
+    const g = resolve(saved, this.detected, this.gpuLevel);
     this.q = g;
     const size = SHADOW_MAP[g.shadows];
     const shadowsChanged = !prev || prev.shadows !== g.shadows;
@@ -150,7 +157,8 @@ export class Renderer {
     this._fpsVisible(g.showFps);
     if (typeof document !== 'undefined') document.body.dataset.gfxPreset = g.preset;
     // Detail and particle budgets change geometry: rebuild the current level.
-    const rebuild = prev && (prev.detail !== g.detail || prev.particles !== g.particles);
+    // So does the preset's asset budget (materials, texture sizes, segments, gears, particle pools).
+    const rebuild = prev && (prev.detail !== g.detail || prev.particles !== g.particles || JSON.stringify(prev.budget) !== JSON.stringify(g.budget));
     if (rebuild && this.level) this.loadLevel(this.level, this.themeId);
     else if (shadowsChanged) this.scene.traverse(o => {
       if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { m.needsUpdate = true; });
@@ -173,6 +181,7 @@ export class Renderer {
     return {
       gpu: this.gpu || (words && words.unknownGpu) || 'unknown GPU',
       detected: this.detected,
+      level: this.gpuLevel,
       resolved: this.q,
       summary: describe(this.q, px, words),
       fps: Math.round(this.fps || 0),
@@ -197,7 +206,7 @@ export class Renderer {
   _postKey() {
     const g = this.q;
     return g.post || g.antialias === 'msaa'
-      ? [g.ao, g.bloom, g.grade, g.antialias, this.size[0], this.size[1], this.pixelRatio].join('|')
+      ? [g.ao, g.bloom, g.grade, g.antialias, g.budget.bloomRes, g.budget.aoRes, this.size[0], this.size[1], this.pixelRatio].join('|')
       : 'none';
   }
 
@@ -223,11 +232,11 @@ export class Renderer {
         ao.blendIntensity = g.ao === 'high' ? 0.85 : 0.7;
         ao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1.4, thickness: 1.2, scale: 1.0, samples: g.ao === 'high' ? 16 : 8 });
         ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: g.ao === 'high' ? 6 : 4, rings: 2, samples: g.ao === 'high' ? 16 : 8 });
-        composer.addPass(ao);
+        composer.addPass(atScale(ao, g.budget.aoRes));
       }
       if (g.bloom === 'on') {
         // High threshold: only emissive parts (exit, gears, sparks, windows) bloom.
-        composer.addPass(new UnrealBloomPass(new THREE.Vector2(W, H), 0.45, 0.45, 0.9));
+        composer.addPass(atScale(new UnrealBloomPass(new THREE.Vector2(W, H), 0.45, 0.45, 0.9), g.budget.bloomRes));
       }
       composer.addPass(new OutputPass());
       if (g.grade === 'on') {
@@ -369,20 +378,32 @@ export class Renderer {
     });
   }
 
+  // Shading per the preset's budget: Lambert on Low (PBR terms dropped; colour, maps, emission and
+  // opacity kept), Standard on Balanced, clear-coat Physical brass on High/Ultra.
   _mat(color, opts) {
-    return new THREE.MeshStandardMaterial(Object.assign({ color, roughness: 0.55, metalness: 0.65 }, opts));
+    const p = Object.assign({ color, roughness: 0.55, metalness: 0.65 }, opts);
+    if (this.q.budget.material === 'lambert') return lambert(p);
+    return new THREE.MeshStandardMaterial(p);
   }
 
   _phys(color, opts) {
-    return new THREE.MeshPhysicalMaterial(Object.assign({ color, roughness: 0.35, metalness: 0.9, clearcoat: 0.6, clearcoatRoughness: 0.25 }, opts));
+    const p = Object.assign({ color, roughness: 0.35, metalness: 0.9, clearcoat: 0.6, clearcoatRoughness: 0.25 }, opts);
+    if (this.q.budget.material === 'lambert') return lambert(p);
+    if (this.q.budget.material === 'standard') { delete p.clearcoat; delete p.clearcoatRoughness; return new THREE.MeshStandardMaterial(p); }
+    return new THREE.MeshPhysicalMaterial(p);
   }
+
+  _seg(n, min) { return Math.max(min || 3, Math.round(n * this.q.budget.segments)); }
 
   // ---- procedural textures (seeded, drawn once per level)
 
-  _canvas(size, draw, linear) {
+  // `authored`: the size the draw routine is written for; the canvas is `size` px and scaled to it.
+  _canvas(size, draw, linear, authored) {
     const c = document.createElement('canvas');
     c.width = c.height = size;
-    draw(c.getContext('2d'), size);
+    const ctx = c.getContext('2d');
+    if (authored && authored !== size) ctx.scale(size / authored, size / authored);
+    draw(ctx, authored || size);
     const t = new THREE.CanvasTexture(c);
     t.colorSpace = linear ? THREE.NoColorSpace : THREE.SRGBColorSpace;
     t.anisotropy = 4;
@@ -411,7 +432,8 @@ export class Renderer {
       ctx.lineWidth = 6;
       ctx.strokeRect(0, 0, n, n);
     };
-    return { map: this._canvas(128, draw, false), bump: this._canvas(128, draw, true) };
+    const n = this.q.budget.texture;
+    return { map: this._canvas(n, draw, false, 128), bump: this._canvas(n, draw, true, 128) };
   }
 
   // Brass plate: brushed streaks and four corner rivets.
@@ -437,7 +459,8 @@ export class Renderer {
         ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.fill();
       }
     };
-    return { map: this._canvas(128, draw, false), bump: this._canvas(128, draw, true) };
+    const n = this.q.budget.texture;
+    return { map: this._canvas(n, draw, false, 128), bump: this._canvas(n, draw, true, 128) };
   }
 
   _softSprite() {
@@ -460,7 +483,7 @@ export class Renderer {
     // Tower wall far behind the playfield: dim brick courses, unlit (no fog) so
     // it stays a quiet backdrop that never competes with the tiles.
     const sky = new THREE.Color(theme.sky);
-    const brick = this._canvas(256, (ctx, n) => {
+    const brick = this._canvas(this.q.budget.texture * 2, (ctx, n) => {
       const base = sky.clone().multiplyScalar(1.1);
       const mortar = sky.clone().multiplyScalar(0.6);
       ctx.fillStyle = '#' + mortar.getHexString();
@@ -475,7 +498,7 @@ export class Renderer {
           ctx.fillRect(x + 2, r * bh + 2, bw - 4, bh - 4);
         }
       }
-    }, false);
+    }, false, 256);
     brick.wrapS = brick.wrapT = THREE.RepeatWrapping;
     brick.repeat.set(24, 14);
     const wall = new THREE.Mesh(
@@ -490,7 +513,7 @@ export class Renderer {
     const gearGeo = this._track(this._gearGeometry(1, 0.28, 12));
     // Background gears stay dim so they recede behind the playfield.
     const gearMat = this._track(this._mat(new THREE.Color(theme.brass).lerp(new THREE.Color(theme.sky), 0.5).multiplyScalar(0.22), { roughness: 0.6, metalness: 0.6 }));
-    const count = Math.round(6 * envDetail) + 2;
+    const count = Math.round(this.q.budget.gears * envDetail) + 2;
     this.envGears = [];
     for (let i = 0; i < count; i++) {
       const m = new THREE.Mesh(gearGeo, gearMat);
@@ -502,7 +525,7 @@ export class Renderer {
       g.add(m);
       this.envGears.push(m);
     }
-    const colGeo = this._track(new THREE.CylinderGeometry(0.6, 0.8, 80, detailed ? 16 : 10));
+    const colGeo = this._track(new THREE.CylinderGeometry(0.6, 0.8, 80, this._seg(detailed ? 16 : 10, 6)));
     const colMat = this._track(this._mat(theme.solid, { roughness: 0.7, metalness: 0.4 }));
     for (const x of [-level.w * 0.7, level.w * 1.7]) {
       const c = new THREE.Mesh(colGeo, colMat);
@@ -523,10 +546,10 @@ export class Renderer {
     // Great clock face behind the upper playfield, hands turning slowly.
     const clock = new THREE.Group();
     const R = 7.5;
-    const face = new THREE.Mesh(this._track(new THREE.CircleGeometry(R, 48)),
+    const face = new THREE.Mesh(this._track(new THREE.CircleGeometry(R, this._seg(48, 24))),
       this._track(this._mat(new THREE.Color(theme.sky).multiplyScalar(1.3), { roughness: 0.9, metalness: 0.2 })));
     const rimMat = this._track(this._mat(new THREE.Color(theme.brass).multiplyScalar(0.38), { roughness: 0.6, metalness: 0.75 }));
-    const ring = new THREE.Mesh(this._track(new THREE.TorusGeometry(R, 0.35, 10, 64)), rimMat);
+    const ring = new THREE.Mesh(this._track(new THREE.TorusGeometry(R, 0.35, this._seg(10, 6), this._seg(64, 32))), rimMat);
     const tickGeo = this._track(new THREE.BoxGeometry(0.28, 1.1, 0.2));
     clock.add(face, ring);
     for (let i = 0; i < 12; i++) {
@@ -638,9 +661,9 @@ export class Renderer {
     // Detailed: chamfered blocks with dressed-stone / riveted-brass surfaces.
     const blockGeo = this._track(detailed ? new RoundedBoxGeometry(1, 1, 1, 2, 0.06) : new THREE.BoxGeometry(1, 1, 1));
     const boxGeo = this._track(new THREE.BoxGeometry(1, 1, 1));
-    const spikeGeo = this._track(new THREE.ConeGeometry(0.34, 0.7, detailed ? 8 : 6));
-    const gearGeo = this._track(new THREE.TorusGeometry(0.3, 0.11, detailed ? 12 : 8, detailed ? 24 : 14));
-    const springGeo = this._track(new THREE.CylinderGeometry(0.32, 0.4, 0.3, detailed ? 16 : 10));
+    const spikeGeo = this._track(new THREE.ConeGeometry(0.34, 0.7, this._seg(detailed ? 8 : 6, 4)));
+    const gearGeo = this._track(new THREE.TorusGeometry(0.3, 0.11, this._seg(detailed ? 12 : 8, 6), this._seg(detailed ? 24 : 14, 10)));
+    const springGeo = this._track(new THREE.CylinderGeometry(0.32, 0.4, 0.3, this._seg(detailed ? 16 : 10, 8)));
     const stone = detailed ? this._stoneTextures() : null;
     const plate = detailed ? this._brassTextures() : null;
 
@@ -825,7 +848,8 @@ export class Renderer {
   }
 
   _buildParticles(theme) {
-    const max = PARTICLE_BUDGET[this.q.particles] || PARTICLE_BUDGET.low;
+    const pb = particleBudget(this.q);
+    const max = pb.max;
     const sprite = this._softSprite();
     const geo = this._track(new THREE.BufferGeometry());
     const pos = new Float32Array(max * 3);
@@ -842,7 +866,7 @@ export class Renderer {
     this.particles = { pts, pos, live: [], max, cursor: 0 };
 
     // Ambient dust motes drifting through the key light.
-    const n = DUST_MOTES[this.q.particles] || 0;
+    const n = pb.dust;
     if (!n) return;
     const dgeo = this._track(new THREE.BufferGeometry());
     const dpos = new Float32Array(n * 3);
@@ -1123,4 +1147,21 @@ export class Renderer {
     if (state.over) parts.push(state.won ? t('descComplete') : t('descEnded', { reason: t(REASON_KEYS[state.reason] || '') || state.reason }));
     return parts.join(' ');
   }
+}
+
+// Lambert copy of Standard/Physical parameters (Low): keeps colour, maps, emission and transparency.
+const LAMBERT_KEYS = ['color', 'map', 'bumpMap', 'bumpScale', 'emissive', 'emissiveIntensity', 'transparent', 'opacity', 'alphaTest', 'side', 'fog', 'depthWrite'];
+function lambert(p) {
+  const q = {};
+  for (const k of LAMBERT_KEYS) if (p[k] !== undefined) q[k] = p[k];
+  return new THREE.MeshLambertMaterial(q);
+}
+
+// Run a post pass at a fraction of the frame: EffectComposer.addPass/setSize hand every pass the full
+// frame size, so the pass's own setSize applies the budget's scale (half-res bloom/GTAO below Ultra).
+function atScale(pass, k) {
+  if (!(k < 1)) return pass;
+  const setSize = pass.setSize.bind(pass);
+  pass.setSize = (w, h) => setSize(Math.max(1, Math.round(w * k)), Math.max(1, Math.round(h * k)));
+  return pass;
 }

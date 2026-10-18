@@ -1062,7 +1062,7 @@ function refreshGfxSummary() {
     const out = document.getElementById('gfx-summary');
     if (!out || !app.renderer) return;
     const info = app.renderer.graphicsInfo(gfxWords());
-    out.textContent = info.gpu + ' · ' + info.summary;
+    out.textContent = [info.gpu, Number.isFinite(info.level) ? gt('level', { n: info.level }) : null, info.summary].filter(Boolean).join(' · ');
     out.dataset.preset = info.resolved.preset;
     const note = document.getElementById('gfx-post-note');
     if (note) note.hidden = !info.postFailed;

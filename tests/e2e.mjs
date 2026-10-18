@@ -139,6 +139,8 @@ async function graphicsPass(page, name) {
     await page.waitForFunction((v) => document.body.dataset.gfxPreset === v && document.getElementById('gfx-summary').dataset.preset === v, p, { timeout: 8000 });
     await page.waitForTimeout(400); // let a few frames render with the new chain
   }
+  const sumText = await page.textContent('#gfx-summary');
+  if (!/ · Level 0 · /.test(sumText)) throw new Error(`summary lacks the hardware level: ${sumText}`);
   await page.screenshot({ path: SHOT('graphics', name) });
   // One override: bloom off, while the preset stays High.
   await page.selectOption('#gfx-bloom', 'off');

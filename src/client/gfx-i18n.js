@@ -15,7 +15,7 @@ const EN = {
   tier_fxaa: 'FXAA', tier_smaa: 'SMAA', tier_msaa: 'MSAA',
   tier_static: 'Static', tier_animated: 'Animated', tier_plain: 'Plain', tier_detailed: 'Detailed',
   adaptive: 'Adaptive resolution', showFps: 'Show frame rate',
-  postUnavailable: 'Post-processing is unavailable on this device; rendering without it.',
+  postUnavailable: 'Post-processing is unavailable on this device; rendering without it.', level: 'Level {n}',
 };
 
 const STRINGS = {
@@ -33,7 +33,7 @@ const STRINGS = {
     tier_fxaa: 'FXAA', tier_smaa: 'SMAA', tier_msaa: 'MSAA',
     tier_static: 'Estático', tier_animated: 'Animado', tier_plain: 'Simple', tier_detailed: 'Detallado',
     adaptive: 'Resolución adaptable', showFps: 'Mostrar cuadros por segundo',
-    postUnavailable: 'El posprocesamiento no está disponible en este dispositivo; se renderiza sin él.',
+    postUnavailable: 'El posprocesamiento no está disponible en este dispositivo; se renderiza sin él.', level: 'Nivel {n}',
   },
   'es-ES': {
     tabGeneral: 'General', tabGraphics: 'Gráficos',
@@ -47,7 +47,7 @@ const STRINGS = {
     tier_fxaa: 'FXAA', tier_smaa: 'SMAA', tier_msaa: 'MSAA',
     tier_static: 'Estático', tier_animated: 'Animado', tier_plain: 'Sencillo', tier_detailed: 'Detallado',
     adaptive: 'Resolución adaptativa', showFps: 'Mostrar fotogramas por segundo',
-    postUnavailable: 'El posprocesado no está disponible en este dispositivo; se renderiza sin él.',
+    postUnavailable: 'El posprocesado no está disponible en este dispositivo; se renderiza sin él.', level: 'Nivel {n}',
   },
   'de-DE': {
     tabGeneral: 'Allgemein', tabGraphics: 'Grafik',
@@ -61,7 +61,7 @@ const STRINGS = {
     tier_fxaa: 'FXAA', tier_smaa: 'SMAA', tier_msaa: 'MSAA',
     tier_static: 'Statisch', tier_animated: 'Animiert', tier_plain: 'Schlicht', tier_detailed: 'Detailliert',
     adaptive: 'Adaptive Auflösung', showFps: 'Bildrate anzeigen',
-    postUnavailable: 'Nachbearbeitung ist auf diesem Gerät nicht verfügbar; es wird ohne sie gerendert.',
+    postUnavailable: 'Nachbearbeitung ist auf diesem Gerät nicht verfügbar; es wird ohne sie gerendert.', level: 'Stufe {n}',
   },
   'fr-FR': {
     tabGeneral: 'Général', tabGraphics: 'Graphismes',
@@ -75,7 +75,7 @@ const STRINGS = {
     tier_fxaa: 'FXAA', tier_smaa: 'SMAA', tier_msaa: 'MSAA',
     tier_static: 'Statique', tier_animated: 'Animé', tier_plain: 'Simple', tier_detailed: 'Détaillé',
     adaptive: 'Résolution adaptative', showFps: 'Afficher les images par seconde',
-    postUnavailable: 'Le post-traitement n’est pas disponible sur cet appareil ; rendu sans lui.',
+    postUnavailable: 'Le post-traitement n’est pas disponible sur cet appareil ; rendu sans lui.', level: 'Niveau {n}',
   },
   'fr-CA': {
     tabGeneral: 'Général', tabGraphics: 'Graphiques',
@@ -89,7 +89,7 @@ const STRINGS = {
     tier_fxaa: 'FXAA', tier_smaa: 'SMAA', tier_msaa: 'MSAA',
     tier_static: 'Statique', tier_animated: 'Animé', tier_plain: 'Simple', tier_detailed: 'Détaillé',
     adaptive: 'Résolution adaptative', showFps: 'Afficher la fréquence d’images',
-    postUnavailable: 'Le post-traitement n’est pas offert sur cet appareil; rendu sans celui-ci.',
+    postUnavailable: 'Le post-traitement n’est pas offert sur cet appareil; rendu sans celui-ci.', level: 'Niveau {n}',
   },
   'pt-BR': {
     tabGeneral: 'Geral', tabGraphics: 'Gráficos',
@@ -103,7 +103,7 @@ const STRINGS = {
     tier_fxaa: 'FXAA', tier_smaa: 'SMAA', tier_msaa: 'MSAA',
     tier_static: 'Estático', tier_animated: 'Animado', tier_plain: 'Simples', tier_detailed: 'Detalhado',
     adaptive: 'Resolução adaptável', showFps: 'Mostrar taxa de quadros',
-    postUnavailable: 'O pós-processamento não está disponível neste dispositivo; renderizando sem ele.',
+    postUnavailable: 'O pós-processamento não está disponível neste dispositivo; renderizando sem ele.', level: 'Nível {n}',
   },
   'it-IT': {
     tabGeneral: 'Generali', tabGraphics: 'Grafica',
@@ -117,7 +117,7 @@ const STRINGS = {
     tier_fxaa: 'FXAA', tier_smaa: 'SMAA', tier_msaa: 'MSAA',
     tier_static: 'Statico', tier_animated: 'Animato', tier_plain: 'Semplice', tier_detailed: 'Dettagliato',
     adaptive: 'Risoluzione adattiva', showFps: 'Mostra frequenza fotogrammi',
-    postUnavailable: 'La post-elaborazione non è disponibile su questo dispositivo; rendering senza.',
+    postUnavailable: 'La post-elaborazione non è disponibile su questo dispositivo; rendering senza.', level: 'Livello {n}',
   },
 };
 
