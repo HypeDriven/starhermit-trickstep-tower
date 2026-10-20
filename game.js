@@ -548,13 +548,17 @@ function updateHud() {
   app.els.hudGears.textContent = gears + ' / ' + st.gears.length;
   app.els.hudDeaths.textContent = String(st.deaths);
   app.els.hudTime.textContent = (st.tick * TICK_MS / 1000).toFixed(1) + 's';
+  let limit = '';
   if (st.moveLimit !== null) {
-    app.els.hudLimit.textContent = t('movesLeft', { n: Math.max(0, st.moveLimit - st.moves) });
+    limit = t('movesLeft', { n: Math.max(0, st.moveLimit - st.moves) });
   } else if (st.timeLimit !== null) {
-    app.els.hudLimit.textContent = t('timeLeft', { n: Math.max(0, ((st.timeLimit - st.tick) * TICK_MS / 1000)).toFixed(0) });
-  } else {
-    app.els.hudLimit.textContent = '';
+    limit = t('timeLeft', { n: Math.max(0, ((st.timeLimit - st.tick) * TICK_MS / 1000)).toFixed(0) });
   }
+  app.els.hudLimit.textContent = limit;
+  // Limits only count down: the round's first text is its longest, so its
+  // width stays reserved and the HUD row never re-wraps as digits drop.
+  if (limit && !s.limitCh) s.limitCh = limit.length;
+  app.els.hudLimit.style.minWidth = limit ? s.limitCh + 'ch' : '';
   app.els.boardDesc.textContent = app.renderer.describeState(st, s.level, t, levelName(s.level));
   app.els.hudSync.textContent = syncLabel();
 }

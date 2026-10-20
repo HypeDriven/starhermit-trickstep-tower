@@ -97,6 +97,14 @@ body.high-contrast { --panel: #000; --panel-2: #111; --ink: #fff; --ink-dim: #dd
 }
 .hud-group.stats { display: flex; gap: 14px; flex-wrap: wrap; }
 .hud-group.stats b { color: var(--accent); }
+/* Numbers that change mid-round keep a digit-stable, reserved width (score up
+   to 9999, deaths up to 99, time up to 999.9s): a longer value must never
+   re-wrap the HUD row and move Pause between a press and its release. */
+.hud-group.stats { font-variant-numeric: tabular-nums; }
+.hud-group.stats b { display: inline-block; }
+#hud-score { min-width: 4ch; }
+#hud-deaths { min-width: 2ch; }
+#hud-time { min-width: 6ch; }
 #hud-objective { display: block; font-weight: 600; }
 #hud-lesson { display: block; color: var(--ink-dim); font-size: 0.9em; max-width: 60ch; }
 #hud-limit { color: var(--danger); font-weight: 600; }
