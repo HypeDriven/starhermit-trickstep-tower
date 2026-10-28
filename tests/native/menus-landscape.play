@@ -1,0 +1,78 @@
+# The menus in a short landscape window (844 x 390): Help, Settings (the
+# palette and left-handed controls), Profile (a guest name), Challenges, a
+# Practice run on Stage 1 (Standard) with pause, undo, retry and leave, the
+# resumable run on the title, then the Daily started and left.
+# viewport 844x390@1
+until 600 Trickstep Tower
+frames 30
+click =Help & Rules
+until 300 Rule cards
+frames 10
+save tt-land-help
+key Escape 1
+until 300 ▶ Play
+frames 10
+click =Settings
+until 300 Color-vision palette
+frames 10
+click =Left-handed touch controls
+frames 10
+save tt-land-settings
+key Escape 1
+until 300 ▶ Play
+frames 10
+click =Profile
+until 300 Guest mode
+frames 10
+click Guest
+type Ada
+frames 5
+click =Save name
+until 300 ▶ Play
+frames 10
+click ▶ Play
+until 300 Choose a Mode
+frames 10
+click =Challenge: Play
+until 300 Few Careful Steps
+frames 10
+save tt-land-challenges
+key Escape 1
+until 300 Choose a Mode
+frames 10
+click =Practice: Play
+until 300 Start Practice
+frames 10
+save tt-land-practice
+click =Start Practice
+until 400 GO
+frames 30
+hold ArrowRight
+frames 80
+release ArrowRight
+key KeyU 1
+frames 10
+save tt-land-run
+key Escape 1
+until 300 Resume
+frames 10
+save tt-land-pause
+click =Retry (R)
+until 400 GO
+frames 40
+key Escape 1
+until 300 Leave level
+frames 10
+click =Leave level
+until 300 Resume paused run
+frames 10
+save tt-land-title
+click Daily
+until 400 GO
+frames 30
+key KeyP 1
+until 300 Daily Challenge
+frames 10
+click =Leave level
+until 300 ▶ Play
+frames 10

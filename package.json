@@ -1,22 +1,24 @@
 {
   "name": "trickstep-tower",
   "version": "1.0.0",
-  "description": "Trickstep Tower — a clockwork precision platformer for the browser",
+  "description": "Trickstep Tower — a clockwork precision platformer on the StarHermit engine",
   "type": "module",
   "main": "server.js",
   "scripts": {
-    "test": "node --test tests/*.test.js",
-    "test:e2e": "node tests/e2e.mjs",
+    "test": "npm run test:unit && npm run test:native",
+    "test:unit": "node --test tests/rules.test.js tests/server.test.js tests/i18n.test.mjs tests/save.test.mjs tests/plays.test.mjs",
+    "test:native": "node tests/native.mjs",
+    "test:browser": "node tools/browser-play.mjs .",
     "validate": "node tools/validate.js",
-    "start": "node server.js"
+    "start": "node server.js",
+    "package": "node tools/package-web.mjs",
+    "css": "node tools/css.mjs"
   },
   "keywords": [],
   "author": "",
   "license": "SEE LICENSE IN LICENSE.md",
-  "dependencies": {
-    "three": "^0.185.1"
-  },
   "devDependencies": {
     "playwright-core": "^1.62.1"
-  }
+  },
+  "private": true
 }

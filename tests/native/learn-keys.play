@@ -1,0 +1,85 @@
+# The five Learn lessons won by keys on a desktop window: hold Right and jump on a
+# rhythm the rules tolerate at any phase (tools/plan.mjs checks the periods);
+# each lesson's results, then Next → to the next lesson, the lesson list at the end.
+# viewport 1280x800@1
+until 600 Trickstep Tower
+frames 30
+click ▶ Play
+until 300 Choose a Mode
+frames 10
+click =Learn: Play
+until 300 Learn the Tower
+frames 10
+save tt-learn-list
+click =Lesson 1 — Walking the Decks. Use Left/Right (or A/D, or the touch arrows) to walk. Reach the glowing exit door.
+until 600 Lesson 1
+frames 10
+until 400 GO
+frames 30
+hold ArrowRight
+repeat 3000 until Floor Cleared
+key Space 1
+frames 16
+end
+release ArrowRight
+frames 10
+expect Completion
+save tt-learn-results
+click =Next →
+frames 10
+until 600 Lesson 2
+frames 10
+until 400 GO
+frames 30
+hold ArrowRight
+repeat 3000 until Floor Cleared
+key Space 1
+frames 16
+end
+release ArrowRight
+frames 10
+click =Next →
+frames 10
+until 600 Lesson 3
+frames 10
+until 400 GO
+frames 30
+hold ArrowRight
+repeat 3000 until Floor Cleared
+key Space 1
+frames 16
+end
+release ArrowRight
+frames 10
+click =Next →
+frames 10
+until 600 Lesson 4
+frames 10
+until 400 GO
+frames 30
+hold ArrowRight
+repeat 3000 until Floor Cleared
+key Space 1
+frames 16
+end
+release ArrowRight
+frames 10
+click =Next →
+frames 10
+until 600 Lesson 5
+frames 10
+until 400 GO
+frames 30
+hold ArrowRight
+repeat 3000 until Floor Cleared
+key Space 1
+frames 25
+end
+release ArrowRight
+frames 10
+expect Total
+click =Next →
+until 300 Learn the Tower
+frames 10
+expect ★ Lesson 5
+save tt-learn-done

@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { STRINGS } from '../src/client/strings.js';
+import { STRINGS } from '../src/strings.js';
 import { TUTORIALS, JOURNEY_COUNT, journeyStage, CHALLENGES, challengeLevel, dailyLevel } from '../src/content.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -29,17 +29,17 @@ test('all nine locales ship every key with the same placeholders', () => {
 });
 
 test('every t(key) used by the client exists in en-US', () => {
-  const src = ['game.js', 'src/client/render.js', 'src/client/i18n.js'].map(f => fs.readFileSync(path.join(ROOT, f), 'utf8')).join('\n');
+  const src = fs.readdirSync(path.join(ROOT, 'native')).map(f => 'native/' + f).map(f => fs.readFileSync(path.join(ROOT, f), 'utf8')).join('\n');
   const used = new Set();
-  for (const m of src.matchAll(/\bt\('([A-Za-z0-9]+)'(?!\s*\+)/g)) used.add(m[1]);
-  for (const m of src.matchAll(/data-i18n(?:-aria)?="([A-Za-z0-9]+)"/g)) used.add(m[1]);
+  for (const m of src.matchAll(/\bt\("([A-Za-z0-9]+)"(?!\s*\+)/g)) used.add(m[1]);
+  for (const m of src.matchAll(/"(cap[A-Z][a-z]+|pal[A-Z][a-z]+)"/g)) used.add(m[1]);
+  assert.ok(used.size > 100, 'scanned the engine client');
   // Keys built at runtime.
   for (const b of ['Music', 'Effects', 'Ambience', 'Voice']) used.add('bus' + b);
   for (const k of ['Goal', 'Move', 'Jump', 'Trick', 'Vanish', 'Hazards', 'Gears', 'Score', 'Pause']) { used.add('rule' + k); used.add('rule' + k + 'Text'); }
   for (const k of ['modeLearn', 'modeJourney', 'modeDaily', 'modePractice', 'modeChallenge', 'modeScores']) for (const s of ['', 'Desc', 'Meta']) used.add(k + s);
   for (const k of ['achFirstClear', 'achGearMaster', 'achStreak3', 'achTowerTop', 'achCenturion']) { used.add(k); used.add(k + 'Desc'); }
   for (const k of ['Jump', 'Land', 'Gear', 'Death', 'Checkpoint', 'Spring', 'Win', 'Fail', 'Invalid', 'Reveal', 'Countdown', 'Go', 'Achievement']) used.add('cap' + k);
-  for (const k of ['NoShadows', 'Shadows', 'FullAo', 'Ao', 'Bloom', 'Grade', 'NoAa', 'DenseParticles', 'UnknownGpu']) used.add('gfx' + k);
   for (const k of ['syncSynced', 'syncSaving', 'syncOffline', 'syncError', 'reasonExit', 'reasonMoveLimit', 'reasonTimeLimit',
     'boardDaily', 'boardJourney', 'boardChallenge', 'palDefault', 'palDeuteranopia', 'palProtanopia', 'palTritanopia', 'palMono',
     'reducedMotion', 'highContrast', 'largeText', 'leftHanded', 'haptics', 'savedLocalCasual', 'unrankedNoSubmit']) used.add(k);
@@ -48,10 +48,8 @@ test('every t(key) used by the client exists in en-US', () => {
 });
 
 test('content names follow the language for every level', async () => {
-  let apply = null;
-  globalThis.window = { StarHermitLanguage: { create: (o) => { apply = o.apply; return {}; } } };
-  const i18n = await import('../src/client/i18n.js');
-  delete globalThis.window;
+  const i18n = await import('../src/lang.js');
+  const apply = i18n.setLang;
   const levels = [...TUTORIALS, ...Array.from({ length: JOURNEY_COUNT }, (_, i) => journeyStage(i)),
     ...CHALLENGES.map(c => challengeLevel(c.id)), dailyLevel(new Date(Date.UTC(2026, 9, 17)))];
   apply('en-US');
@@ -68,4 +66,10 @@ test('content names follow the language for every level', async () => {
     for (const c of CHALLENGES) assert.notEqual(i18n.challengeText(c).desc, c.desc, loc + ' challenge ' + c.id);
   }
   apply('en-US');
+});
+
+test('every platform string exists in all nine locales', async () => {
+  const { PLATFORM_STRINGS } = await import('../src/platform-strings.js');
+  const en = PLATFORM_STRINGS['en-US'];
+  for (const loc of LOCALES) for (const k of Object.keys(en)) assert.ok(PLATFORM_STRINGS[loc] && PLATFORM_STRINGS[loc][k], loc + ' ' + k);
 });

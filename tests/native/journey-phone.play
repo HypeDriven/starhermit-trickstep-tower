@@ -1,0 +1,42 @@
+# Journey stages 1 and 2 on a phone (390 x 844 at DPR 3): the menus by finger,
+# the climb by keys (hold Right, jump on a rhythm the rules win at any phase);
+# both results (saved to the local casual board), then the Score Chase board.
+# viewport 390x844@3
+until 600 Trickstep Tower
+frames 30
+touch ▶ Play
+until 300 Choose a Mode
+frames 10
+save tt-phone-modes
+touch =Journey: Play (recommended)
+until 300 Journey — Forty Floors
+frames 10
+save tt-phone-journey
+touch =Stage 1
+until 400 GO
+frames 30
+save tt-phone-play
+hold ArrowRight
+repeat 3000 until Floor Cleared
+key Space 1
+frames 16
+end
+release ArrowRight
+frames 10
+expect Saved locally
+save tt-phone-results
+touch =Next →
+until 400 GO
+frames 30
+hold ArrowRight
+repeat 3000 until Floor Cleared
+key Space 1
+frames 16
+end
+release ArrowRight
+frames 10
+touch =Scores
+until 300 Score Chase
+frames 20
+expect (local)
+save tt-phone-scores
