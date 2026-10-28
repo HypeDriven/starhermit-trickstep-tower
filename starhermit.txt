@@ -1,14 +1,42 @@
 name=Trickstep Tower
 description=Jump through a clockwork tower, learn its deceptive traps, and use quick retries to reach each exit.
-launch=index.html
 owner=2712e04e-461b-4d23-81ae-e40b429128a8
 server=score-script.js
 version=1.0.0
 cover=cover.jpg
+
+# StarHermit engine script game: one package, played natively by the
+# StarHermit client and in browsers by the engine's web runtime. Browsers open
+# launch=index.html, the loader `npm run package` writes (it pins the engine
+# on wiki.starhermit.com by hash; never edit it). Re-run `npm run package`
+# after every change and commit index.html + starhermit-files.json.
+launch=index.html
+engine.api=1
+engine.entry=native/main.ts
+engine.version=1.21.0
+engine.minor=23
+engine.capabilities=platform,storage,clipboard
+
+# Keyboard actions (players rebind keys and pads in the runtime's Options).
+# On touch screens the runtime draws ◀ ▶ and JUMP buttons during play
+# (mirrored for left-handed touch controls).
+engine.group.left=Climber
 control.left=ArrowLeft+KeyA | Move left
 control.right=ArrowRight+KeyD | Move right
 control.jump=Space+ArrowUp+KeyW | Jump
+engine.group.pause=Level
 control.pause=Escape+KeyP | Pause
 control.retry=KeyR | Retry
 control.undo=KeyU | Undo (Practice)
 control.camera=KeyC | Reset camera
+
+# Gamepad defaults: the left stick or D-pad walks (as the browser build),
+# South jumps, Start pauses; added: West retries, North undoes in Practice, the
+# right stick press resets the camera.
+engine.gamepad.left=DpadLeft+LeftStickLeft
+engine.gamepad.right=DpadRight+LeftStickRight
+engine.gamepad.jump=South
+engine.gamepad.pause=Start
+engine.gamepad.retry=West
+engine.gamepad.undo=North
+engine.gamepad.camera=RightStickPress
