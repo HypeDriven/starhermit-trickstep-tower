@@ -35,7 +35,7 @@
     "src/rules.js": {"sha256": "435269abf3a3b3bf29c5c414898820d6f4f616a28fe64b7a039b45ea53b2e05c", "size": 16282},
     "src/save.js": {"sha256": "6f54952ed7ff317289cc507608ff62b1c46817d9885863ecefc37339abd21654", "size": 6671},
     "src/strings.js": {"sha256": "ab1ccf55491ab38fe91fa05ea85aec5c52c317d0707c893df0de106af61ebe68", "size": 73647},
-    "starhermit.txt": {"sha256": "8cdc43e3f57c7dbb1677a366764de14be23697d80cf0609b11606c3b1bc65fb8", "size": 1670}
+    "starhermit.txt": {"sha256": "aa09a0b5e2dfcfc8d188b65367920e008de8bb86e40e6ba78ca41e199586afbc", "size": 1670}
   },
   "excluded": ["LICENSE.md", "coverart.png", "data.json", "node_modules/", "package-lock.json", "package.json", "server.js", "sfx/manifest.json", "sfx/manifest.md", "spec.md", "tests/", "tools/", "tsconfig.json"],
   "format": 1
