@@ -2,7 +2,7 @@
 
 A solo precision platformer: guide a wind-up climber up a clockwork tower to each floor's exit door,
 learning deterministic traps (trick steps, vanishing platforms, spikes, springs, moving platforms)
-through instant retries. It is a StarHermit engine script game (engine 1.22.0, host API 1.23,
+through instant retries. It is a StarHermit engine script game (engine 1.23.0, host API 1.23,
 `engine.minor=23`), played natively by the StarHermit client and in browsers by the engine's web
 runtime from one package.
 
