@@ -712,7 +712,7 @@ export function applyLook(next: Look): void {
   // GradeShader after OutputPass: a 0.22 S-curve, saturation 1.1, cool shadows / warm highlights by a smoothstep of
   // luma 0.15–0.8, a 0.28 vignette from 0.38 to 0.9 with x × 1.1
   renderer.grade = next.grade ? {
-    space: "display", contrast: 0.11, saturation: 1.1, split: [0.15, 0.8], shadows: [0.95, 0.98, 1.06], highlights: [1.05, 1.0, 0.94],
+    space: "display", contrastCurve: "s", contrast: 0.22, saturation: 1.1, split: [0.15, 0.8], shadows: [0.95, 0.98, 1.06], highlights: [1.05, 1.0, 0.94],
     vignette: { amount: 0.28, inner: 0.38, outer: 0.9, scale: [1.1, 1] },
   } : null;
   renderer.antialias = next.antialias;
