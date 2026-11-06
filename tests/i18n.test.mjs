@@ -9,10 +9,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { STRINGS } from '../src/strings.js';
 import { TUTORIALS, JOURNEY_COUNT, journeyStage, CHALLENGES, challengeLevel, dailyLevel } from '../src/content.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const STRINGS = JSON.parse(fs.readFileSync(path.join(ROOT, 'assets/strings.json'), 'utf8'));
 const LOCALES = ['en-US', 'en-GB', 'es-419', 'es-ES', 'de-DE', 'fr-FR', 'fr-CA', 'pt-BR', 'it-IT'];
 const EN = STRINGS['en-US'];
 
@@ -48,8 +48,10 @@ test('every t(key) used by the client exists in en-US', () => {
 });
 
 test('content names follow the language for every level', async () => {
-  const i18n = await import('../src/lang.js');
-  const apply = i18n.setLang;
+  const { createLang } = await import('../src/lang.js');
+  let dict = EN;
+  const i18n = createLang((key, vars) => String(dict[key] ?? EN[key] ?? key).replace(/\{(\w+)\}/g, (m, k) => (vars && vars[k] != null ? String(vars[k]) : m)));
+  const apply = (loc) => { dict = STRINGS[loc]; };
   const levels = [...TUTORIALS, ...Array.from({ length: JOURNEY_COUNT }, (_, i) => journeyStage(i)),
     ...CHALLENGES.map(c => challengeLevel(c.id)), dailyLevel(new Date(Date.UTC(2026, 9, 17)))];
   apply('en-US');
@@ -68,8 +70,3 @@ test('content names follow the language for every level', async () => {
   apply('en-US');
 });
 
-test('every platform string exists in all nine locales', async () => {
-  const { PLATFORM_STRINGS } = await import('../src/platform-strings.js');
-  const en = PLATFORM_STRINGS['en-US'];
-  for (const loc of LOCALES) for (const k of Object.keys(en)) assert.ok(PLATFORM_STRINGS[loc] && PLATFORM_STRINGS[loc][k], loc + ' ' + k);
-});

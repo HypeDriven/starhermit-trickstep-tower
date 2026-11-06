@@ -10,14 +10,14 @@
 // StarHermit high-score post of won ranked runs, and the lifecycle (a hidden
 // window pauses the round). Screens are drawn by screens.ts (starhermit:ui),
 // the tower by render.ts (starhermit:scene).
-import { frame, onFixedUpdate, onPreferencesChange, onRender, onResume, onStart, onSuspend, onUpdate, preferences, setFixedRate } from "starhermit:engine";
+import { afterRender, frame, levelSettings, onFixedUpdate, onPreferencesChange, onRender, onResume, onStart, onSuspend, onUpdate, preferences, setFixedRate } from "starhermit:engine";
 import { bindings, isDown, onAction, setTouchControls, touchControlsVisible, vibrate } from "starhermit:input";
 import * as ui from "starhermit:ui";
 import { clipboard } from "starhermit:engine";
 import { onSessionEnded, requestSignIn } from "starhermit:platform";
-import { C, L, R, SaveModel, type Breakdown, type Ev, type Input, type Level, type State } from "./game.ts";
+import { C, R, SaveModel, type Breakdown, type Ev, type Input, type Level, type State } from "./game.ts";
 import * as audio from "./audio.ts";
-import { pt, t } from "./i18n.ts";
+import { L, pt, t } from "./i18n.ts";
 import * as platform from "./platform.ts";
 import { lookFor } from "./quality.ts";
 import * as render from "./render.ts";
@@ -135,7 +135,6 @@ export const app = {
   board: { tab: "daily", entries: null as { name: string; score: number; local?: boolean; won?: boolean }[] | null, platform: false },
   practice: { stage: 0, diff: 1 },
   nameDraft: null as string | null,
-  toast: null as { text: string; until: number } | null,
   caption: null as { text: string; until: number } | null,
   countdown: null as string | null,
   countN: 0,
@@ -162,7 +161,7 @@ function flushAnnouncements(): void {
   try { ui.announce(text, { politeness: spokenAssertive ? "assertive" : "polite" }); } catch { /* busy */ }
   spokenAssertive = false;
 }
-export function toast(text: string, ms = 3500): void { app.toast = { text, until: now() + ms / 1000 }; announce(text); }
+export function toast(text: string, ms = 3500): void { ui.toast!(text, { duration: ms / 1000, style: ["toast", "toast-text"], dismissible: false }); }
 const CAPTIONS: Partial<Record<audio.Sfx, string>> = {
   land: "capLand", gear: "capGear", death: "capDeath", checkpoint: "capCheckpoint", spring: "capSpring", win: "capWin", fail: "capFail",
   invalid: "capInvalid", reveal: "capReveal", countdown: "capCountdown", go: "capGo", achievement: "capAchievement",
@@ -174,9 +173,8 @@ export function sound(ev: audio.Sfx): void {
   if (c) app.caption = { text: `♪ ${t(c)}`, until: now() + 1.8 };
 }
 function haptic(ms: number): void { if (platform.options.haptics) try { vibrate(ms); } catch { /* none */ } }
-const pending: (() => void)[] = [];
 /** A widget's press, run once the frame's UI is built. */
-export function later(fn: () => void): void { pending.push(fn); }
+export function later(fn: () => void): void { afterRender(fn); }
 export const playing = (): boolean => app.flow === "countdown" || app.flow === "active" || app.flow === "resolving";
 
 const GLYPH: Record<string, string> = { "Arrow Up": "↑", "Arrow Down": "↓", "Arrow Left": "←", "Arrow Right": "→", Escape: "Esc" };
@@ -342,10 +340,10 @@ function showResults(): void {
     const signed = platform.signedIn();
     SaveModel.addLocalScore(platform.doc(), s.mode, { name: platform.signedIn() ? platform.displayName() : (platform.doc().name || "Guest"), score: r.breakdown.total, levelId: s.level.id, at: new Date(platform.nowMs()).toISOString(), won: true });
     platform.persist();
-    s.lb = signed ? { key: "lbPosting", platform: true } : { key: "savedLocalCasual" };
+    s.lb = signed ? { key: "leaderboardPosting", platform: true } : { key: "savedLocalCasual" };
     if (signed) {
       void platform.postScore(Math.max(0, r.breakdown.total)).then((res) => {
-        s.lb = !res.posted ? { key: "lbNotPosted", platform: true } : res.rank ? { key: "lbRank", vars: { rank: res.rank }, platform: true } : { key: "lbPosted", platform: true };
+        s.lb = !res.posted ? { key: "leaderboardNotPosted", platform: true } : res.rank ? { key: "leaderboardRank", vars: { rank: res.rank }, platform: true } : { key: "leaderboardPosted", platform: true };
       });
     }
   } else if (!s.ranked) s.lb = { key: "unrankedNoSubmit" };
@@ -404,7 +402,7 @@ export function signIn(): void { void requestSignIn().catch(() => undefined); }
 export function invite(): void {
   const link = platform.inviteLink();
   if (!link) return;
-  try { clipboard.writeText(link); toast(pt("inviteCopied")); } catch { toast(pt("inviteFailed", { link })); }
+  try { clipboard.writeText(link); toast(pt("inviteCopied")); } catch { toast(pt("inviteLink", { link })); }
 }
 
 // ------------------------------------------------------------------ keys, pads and the touch controls
@@ -462,11 +460,10 @@ onFixedUpdate(() => {
 // ------------------------------------------------------------------ boot and lifecycle
 let lookKey = "";
 function applyLook(): void {
-  const f = frame();
-  const k = `${f.quality}:${f.levelIndex}`;
-  if (k === lookKey) return;
-  lookKey = k;
-  render.applyLook(lookFor(f.quality, f.levelIndex));
+  const level = frame().level;
+  if (level === lookKey) return;
+  lookKey = level;
+  render.applyLook(lookFor(levelSettings(level)));
 }
 onStart(() => {
   setFixedRate(60);
@@ -497,14 +494,15 @@ onUpdate((dt) => {
   applyTokens(platform.options.palette, ui.preferences().highContrast);
   audio.update();
   const n = now();
-  if (app.toast && app.toast.until < n) app.toast = null;
   if (app.caption && app.caption.until < n) app.caption = null;
   touchControls();
 });
 onRender(() => {
   drawScreens();
-  for (const fn of pending.splice(0)) fn();
-  const f = frame();
-  render.update(app.session ? app.session.state : null, frameDt, f.width, f.height, touchControlsVisible());
-  flushAnnouncements();
+  // queued after this frame's presses (later), so they act on this frame's scene
+  afterRender(() => {
+    const f = frame();
+    render.update(app.session ? app.session.state : null, frameDt, f.width, f.height, touchControlsVisible());
+    flushAnnouncements();
+  });
 });

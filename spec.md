@@ -54,8 +54,8 @@ and columns, clock face, glowing windows, light shafts, instanced stone/brass bl
 textured when detailed), the climber with its marker ring, sparks and dust motes, a damped follow
 camera with shake. Low / Balanced / High / Ultra follow the runtime's quality tier with gfx.js's
 presets and budgets (Lambert → Standard → clear-coat Physical, texture sizes, segments, particle
-budgets; shadows 0/1024/2048/4096; GTAO on High/Ultra; bloom 0.45/0.45/0.9; a display-space grade
-and vignette; FXAA / SMAA / MSAA). Minor 23 is r185 parity: the page's own light intensities,
+budgets), and the engine's level (`levelSettings()`) sets the shadow size, GTAO, bloom resolution
+(0.45/0.45/0.9), the display-space grade and vignette, and the anti-aliasing. Minor 23 is r185 parity: the page's own light intensities,
 shadow camera, bias and normal bias; RoomEnvironment (r183+ room, y −3.5) at
 `environmentIntensity` 0.3 as the page set it.
 

@@ -300,7 +300,7 @@ export function loadLevel(l: Level, themeId: string): void {
 function applyShadow(): void {
   if (!keyLight || !look) return;
   keyLight.castShadow = look.shadows > 0;
-  if (look.shadows > 0) keyLight.shadow.mapSize = look.shadows;
+  if (look.shadows > 0) keyLight.shadow.mapSize = look.shadows; // the level's size: at minor 23+ the engine keeps what the game sets
 }
 /** The shadow frustum fitted around the playfield (render.js _fitShadow). */
 function fitShadow(l: Level): void {
@@ -703,11 +703,12 @@ export function applyLook(next: Look): void {
   renderer.shadowMap.enabled = next.shadows > 0;
   applyShadow();
   // high threshold: only emissive parts (exit, gears, sparks, windows) bloom
-  renderer.bloom = next.bloom ? { strength: 0.45, radius: 0.45, threshold: 0.9, resolution: next.budget.bloomRes } : null;
-  renderer.ao = next.ao === "off" ? null : {
-    blendIntensity: next.ao === "high" ? 0.85 : 0.7, radius: 0.6, distanceExponent: 1.4, thickness: 1.2, scale: 1.0, samples: next.ao === "high" ? 16 : 8,
-    resolution: next.budget.aoRes,
-    denoise: { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: next.ao === "high" ? 6 : 4, rings: 2, samples: next.ao === "high" ? 16 : 8 },
+  renderer.bloom = next.bloom === null ? null : { strength: 0.45, radius: 0.45, threshold: 0.9, resolution: next.bloom };
+  const ao = next.ao, hi = !!ao && ao.resolution >= 1; // the engine's "high": full-resolution AO
+  renderer.ao = !ao ? null : {
+    blendIntensity: hi ? 0.85 : 0.7, radius: 0.6, distanceExponent: 1.4, thickness: 1.2, scale: 1.0, samples: ao.samples,
+    resolution: ao.resolution,
+    denoise: { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: hi ? 6 : 4, rings: 2, samples: ao.denoiseSamples },
   };
   // GradeShader after OutputPass: a 0.22 S-curve, saturation 1.1, cool shadows / warm highlights by a smoothstep of
   // luma 0.15–0.8, a 0.28 vignette from 0.38 to 0.9 with x × 1.1

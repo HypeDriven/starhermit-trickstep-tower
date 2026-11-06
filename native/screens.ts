@@ -13,8 +13,8 @@ import { frame, openMenu } from "starhermit:engine";
 import { requestRebind } from "starhermit:input";
 import * as draw from "starhermit:draw";
 import * as ui from "starhermit:ui";
-import { C, L, R, SaveModel } from "./game.ts";
-import { pt, t } from "./i18n.ts";
+import { C, R, SaveModel } from "./game.ts";
+import { L, pt, t } from "./i18n.ts";
 import * as platform from "./platform.ts";
 import { token } from "./style.ts";
 import {
@@ -25,11 +25,9 @@ import {
 // ------------------------------------------------------------------ layout helpers
 interface Layout { lw: number; lh: number; sc: number; portrait: boolean; land: boolean; ox: number; oy: number }
 function layoutNow(): Layout {
-  const f = frame();
-  const sc = ui.preferences().scale;
-  const sa = f.safeArea;
-  const lw = Math.max(1, (f.width - sa.left - sa.right) / sc), lh = Math.max(1, (f.height - sa.top - sa.bottom) / sc);
-  return { lw, lh, sc, portrait: lw <= 640 && lh > lw, land: lh <= 500 && lw > lh, ox: sa.left, oy: sa.top };
+  const v = ui.viewport!();
+  const lw = Math.max(1, v.width), lh = Math.max(1, v.height);
+  return { lw, lh, sc: v.scale, portrait: lw <= 640 && lh > lw, land: lh <= 500 && lw > lh, ox: v.x, oy: v.y };
 }
 const lastSize = new Map<string, ui.Rect>();
 function textWidth(text: string, style: string, kind?: "button" | "heading"): number {
@@ -62,18 +60,9 @@ function button(b: Btn): void {
 }
 /** Buttons at their own widths in rows that wrap at `width` (.btn-row flex-wrap). */
 function flow(label: string, list: Btn[], width: number, gap = 8, justify: "start" | "center" = "start"): void {
-  const rows: Btn[][] = [[]];
-  let used = 0;
-  const bw = (b: Btn): number => Math.min(width, b.width ?? btnWidth(b));
-  for (const b of list) {
-    const w = bw(b);
-    if (rows[rows.length - 1]!.length && used + gap + w > width) { rows.push([]); used = 0; }
-    used += (rows[rows.length - 1]!.length ? gap : 0) + w;
-    rows[rows.length - 1]!.push(b);
-  }
-  ui.column(label, () => {
-    rows.forEach((row, ri) => ui.row(`${label}-r${ri}`, () => { for (const b of row) button({ ...b, width: bw(b) }); }, { spacing: gap, width, justify, align: "center" }));
-  }, { spacing: gap, width });
+  ui.row(label, () => {
+    for (const b of list) button(b.width != null ? { ...b, width: Math.min(width, b.width) } : btnWidth(b) > width ? { ...b, width } : b);
+  }, { wrap: true, width, gap, justify, align: "center" });
 }
 const back = (w: number, act: () => void, id = "btn-back"): void => flow(`${id}-row`, [{ id, text: t("back"), style: "btn-subtle", act }], w);
 
@@ -90,13 +79,6 @@ export function drawScreens(): void {
   }
   if (app.caption) {
     ui.place("captions", { anchor: "bottom", y: 104 }, () => ui.style("caption").id("caption-text").label(app.caption!.text));
-  }
-  if (app.toast) {
-    const w = Math.min(L0.lw - 32, 520);
-    const tw = textWidth(app.toast.text, "toast-text");
-    ui.place("toast", { anchor: "bottom", y: 24 }, () => {
-      ui.column("toast-box", () => para(app.toast!.text, Math.min(tw + 1, w - 34), "toast-text", "toast-text"), { style: "toast" });
-    });
   }
   overlay(L0);
   if (app.focusNext) {

@@ -1,0 +1,48 @@
+# Journey stage 1: a climb with jumps (steps, gears, sparks), then standing in the level, for tools/engine-tier-bench.mjs.
+# viewport 1280x800@1
+until 600 Trickstep Tower
+frames 30
+click ▶ Play
+until 300 Choose a Mode
+frames 10
+click =Journey: Play (recommended)
+until 300 Journey — Forty Floors
+frames 10
+click =Stage 1
+until 400 GO
+frames 120
+measure start
+hold ArrowRight
+key Space 1
+frames 16
+key Space 1
+frames 16
+key Space 1
+frames 16
+key Space 1
+frames 16
+key Space 1
+frames 16
+key Space 1
+frames 16
+key Space 1
+frames 16
+key Space 1
+frames 16
+key Space 1
+frames 16
+key Space 1
+frames 16
+key Space 1
+frames 16
+key Space 1
+frames 16
+key Space 1
+frames 16
+key Space 1
+frames 16
+key Space 1
+frames 16
+release ArrowRight
+frames 300
+measure stop

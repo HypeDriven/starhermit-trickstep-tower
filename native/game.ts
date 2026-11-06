@@ -1,12 +1,11 @@
 // The browser build's pure modules, typed for this client: the rules
 // (src/rules.js: the 20 Hz platformer step, scoring, serialize/hash), the
 // content (src/content.js: themes, the five lessons, the 40 Journey stages,
-// the Daily, challenges), the strings (src/lang.js) and the save model
+// the Daily, challenges), and the save model
 // (src/save.js). They are ES modules shared with the node tests and the dev
 // server (server.js), unchanged.
 import * as rules from "../src/rules.js";
 import * as content from "../src/content.js";
-import * as lang from "../src/lang.js";
 import * as save from "../src/save.js";
 
 export interface Input { move: -1 | 0 | 1; jump: 0 | 1 }
@@ -58,10 +57,3 @@ interface SaveApi {
   addLocalScore(save: SaveDoc, board: string, entry: BoardEntry): number;
 }
 export const SaveModel = save as unknown as SaveApi;
-type Vars = Record<string, string | number>;
-interface LangApi {
-  setLang(tag: string): string; t(key: string, vars?: Vars): string; pt(key: string, vars?: Vars): string;
-  levelName(l: Level | null): string; lessonText(l: Level): { name: string; text: string };
-  challengeText(c: Challenge): { name: string; desc: string }; playerName(n: string): string;
-}
-export const L = lang as unknown as LangApi;
