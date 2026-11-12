@@ -1,0 +1,98 @@
+{
+  "game": {
+    "id": "b1f40d58-2ee6-4696-8711-32986ff8e8b5",
+    "displayName": "Trickstep Tower",
+    "hosting": {
+      "hostingEnabled": true,
+      "hostedUrl": "https://b1f40d58-2ee6-4696-8711-32986ff8e8b5.starhermit.com/index.html",
+      "deployStatus": "live",
+      "pinnedCommitSha": null,
+      "deployedCommitSha": null,
+      "deployError": null,
+      "deployedAt": "2026-11-12T08:18:48.198633+00:00",
+      "externalLaunchUrl": null,
+      "engineVersion": "1.38.0",
+      "deployWarning": null
+    }
+  },
+  "publishedAt": "2026-11-12T08:18:53.010Z",
+  "sourceCommit": "aff334480b19964a13a36e5c2bbaf9e6c8640ce9",
+  "bytesReceived": 1779461,
+  "archiveSha256": "134fc150ba825ec0fd83fe147019891b996443f062f09e9eb9b5d725ccc9327b",
+  "indexSha256": "c8138a43b6cc306da84c57ce627a61dfc406e881d970bda45ae6b9f498da2a77",
+  "result": {
+    "clientPublished": true,
+    "serverImageLoaded": false,
+    "imageDigest": null,
+    "bytesReceived": 1779461,
+    "mode": "replace",
+    "filesRemoved": 0,
+    "engineVersion": "1.38.0",
+    "deployWarning": null
+  },
+  "liveVerification": {
+    "at": "2026-11-12T08:18:53.010Z",
+    "files": [
+      {
+        "file": "starhermit-files.json",
+        "sha256": "c8138a43b6cc306da84c57ce627a61dfc406e881d970bda45ae6b9f498da2a77",
+        "status": 200
+      },
+      {
+        "file": "assets/localization/Japanese.otf",
+        "sha256": "6c25995a1c0a080d230c2667e22ede88f9c6e80199daf78767eb96f12fd14f14",
+        "status": 200
+      },
+      {
+        "file": "assets/localization/Khmer.ttf",
+        "sha256": "1c9d3f16c6ff744e15f3585f4980d08e61bd22b4608a40d60adf36a195d82b55",
+        "status": 200
+      },
+      {
+        "file": "assets/localization/SimplifiedChinese.otf",
+        "sha256": "09af95e1de379d9d9de96a627e2b8cbdcdbd8ef03bf6826bf38fd3bb3cfc6272",
+        "status": 200
+      },
+      {
+        "file": "assets/localization/Tamil.ttf",
+        "sha256": "0392a3ebbaea6b79ea20ff2ea9e29037ce9f6b01b7922a5acf3085cee6549545",
+        "status": 200
+      },
+      {
+        "file": "assets/localization/TraditionalChinese.otf",
+        "sha256": "8e61ec9ddd5511973cd1329b72bd4a01baa9239d0fd0739fdee46e757e3b4e88",
+        "status": 200
+      },
+      {
+        "file": "assets/localization/common.json",
+        "sha256": "a583173d89319a5984b450a414247367b8a31c883c35ab7fa3ac756a00808551",
+        "status": 200
+      },
+      {
+        "file": "assets/localization/fonts.json",
+        "sha256": "37beaea0dba54c9f2c45995cbf9fd19fad21719d701718c41d7e58dd7748ca13",
+        "status": 200
+      },
+      {
+        "file": "assets/localization/locales.json",
+        "sha256": "59d9698b7bd2ac95568061ea7a35db7c19577fd1c79e8ac991db106bc4616f28",
+        "status": 200
+      },
+      {
+        "file": "assets/strings.json",
+        "sha256": "78cd751c6ff87a72c412133b62f8de439f5b4fbcc4b374eb5a556dcb680f3b47",
+        "status": 200
+      },
+      {
+        "file": "index.html",
+        "sha256": "0390deae6736826b3b086fca8a52633bf2597db13d01fcbc1419ab4039a060bc",
+        "status": 200
+      },
+      {
+        "file": "starhermit.txt",
+        "sha256": "6046f007208997ca79f58e0327cfa780c4fd2721aa25d8ced07d3a00f56e7c23",
+        "status": 200
+      }
+    ]
+  }
+}
