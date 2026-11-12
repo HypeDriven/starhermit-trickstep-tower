@@ -13,7 +13,7 @@ import { TUTORIALS, JOURNEY_COUNT, journeyStage, CHALLENGES, challengeLevel, dai
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const STRINGS = JSON.parse(fs.readFileSync(path.join(ROOT, 'assets/strings.json'), 'utf8'));
-const LOCALES = ['en-US', 'en-GB', 'es-419', 'es-ES', 'de-DE', 'fr-FR', 'fr-CA', 'pt-BR', 'it-IT'];
+const LOCALES = ['en-US', 'en-GB', 'es-419', 'es-ES', 'de-DE', 'fr-FR', 'fr-CA', 'pt-BR', 'it-IT', 'fr-BE', 'de-BE', 'en-SG', 'en-HK', 'en-BQ', 'es-CO', 'de-IT', 'fr-IT', 'es-CL', 'es-AR', 'es-EC', 'ja-JP', 'nl-BE', 'zh-SG', 'nl-NL', 'fi-FI', 'sv-FI', 'id-ID', 'ms-SG', 'ta-SG', 'zh-HK', 'yue-HK', 'et-EE', 'vi-VN', 'de-BR', 'da-DE', 'lb-BE', 'eu-FR', 'oc-FR', 'oc-IT', 'ru-FI', 'eu-ES', 'gl-ES', 'ru-EE', 'su-ID', 'km-VN', 'co-FR', 'ca-FR', 'sl-IT', 'fur-IT', 'ca-IT', 'ca-ES', 'bew-ID'];
 const EN = STRINGS['en-US'];
 
 test('all nine locales ship every key with the same placeholders', () => {
@@ -29,7 +29,7 @@ test('all nine locales ship every key with the same placeholders', () => {
 });
 
 test('every t(key) used by the client exists in en-US', () => {
-  const src = fs.readdirSync(path.join(ROOT, 'native')).map(f => 'native/' + f).map(f => fs.readFileSync(path.join(ROOT, f), 'utf8')).join('\n');
+  const src = fs.readdirSync(path.join(ROOT, 'native'), { withFileTypes: true }).filter(entry => entry.isFile() && entry.name.endsWith('.ts')).map(entry => 'native/' + entry.name).map(f => fs.readFileSync(path.join(ROOT, f), 'utf8')).join('\n');
   const used = new Set();
   for (const m of src.matchAll(/\bt\("([A-Za-z0-9]+)"(?!\s*\+)/g)) used.add(m[1]);
   for (const m of src.matchAll(/"(cap[A-Z][a-z]+|pal[A-Z][a-z]+)"/g)) used.add(m[1]);

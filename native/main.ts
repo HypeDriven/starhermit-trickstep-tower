@@ -1,3 +1,4 @@
+import { withLanguageRender as __l10nRender } from "./l10n/menu.ts";
 // Trickstep Tower on the StarHermit engine: the entry module (starhermit.txt
 // engine.entry), played natively by the StarHermit client and in browsers by
 // the engine's web runtime. The rules (src/rules.js) and content
@@ -497,7 +498,7 @@ onUpdate((dt) => {
   if (app.caption && app.caption.until < n) app.caption = null;
   touchControls();
 });
-onRender(() => {
+onRender(__l10nRender(() => {
   drawScreens();
   // queued after this frame's presses (later), so they act on this frame's scene
   afterRender(() => {
@@ -505,4 +506,8 @@ onRender(() => {
     render.update(app.session ? app.session.state : null, frameDt, f.width, f.height, touchControlsVisible());
     flushAnnouncements();
   });
-});
+}));
+
+// localization-runtime:menu
+import { installLanguageMenu as __installLanguageMenu } from "./l10n/menu.ts";
+__installLanguageMenu(false);
