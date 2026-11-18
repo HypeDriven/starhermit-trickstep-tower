@@ -1,3 +1,4 @@
+import { bindings } from "starhermit:input";
 import { localizedStyle as __l10nStyle } from "./l10n/font.ts";
 import { localizedDrawOptions as __l10nDrawOptions } from "./l10n/font.ts";
 // localization-runtime:attached
@@ -82,7 +83,7 @@ function flow(label: string, list: Btn[], width: number, gap = 8, justify: "star
 const back = (w: number, act: () => void, id = "btn-back"): void => flow(`${id}-row`, [{ id, text: t("back"), style: "btn-subtle", act }], w);
 
 // ------------------------------------------------------------------ the frame
-export function drawScreens(): void {
+function drawScreensImmediate(): void {
   const L0 = layoutNow();
   ui.place("wordmark", { anchor: "top-start", x: 12, y: 4 }, () => ui.style(__l10nStyle("wordmark")).id("wordmark").label("TRICKSTEP TOWER"));
   const s = app.session;
@@ -554,4 +555,11 @@ function resultsPanel(w: number): void {
     { id: "btn-scores", text: t("scores"), act: () => void showLeaderboards(s.mode === "learn" || s.mode === "practice" ? "journey" : s.mode) },
   ], w);
   flow("results-leave", [{ id: "btn-results-leave", text: t("leave"), style: "btn-subtle", act: leaveToTitle }], w);
+}
+
+export function drawScreens(): void {
+  if (!(app.overlay === "help")) { drawScreensImmediate(); return; }
+  const actions = ["left","right","jump","pause","retry","undo","camera"];
+  const version = JSON.stringify([(app as any).settings ?? (app as any).options ?? {}, (platform as any).options ?? {}, actions.map((action) => bindings(action))]);
+  ui.retain!("help-screen", version, drawScreensImmediate);
 }
