@@ -2,8 +2,8 @@
 
 A solo precision platformer: guide a wind-up climber up a clockwork tower to each floor's exit door,
 learning deterministic traps (trick steps, vanishing platforms, spikes, springs, moving platforms)
-through instant retries. It is a StarHermit engine script game (engine 1.44.1, host API 1.44,
-`engine.minor=44`), played natively by the StarHermit client and in browsers by the engine's web
+through instant retries. It is a StarHermit engine script game (engine 1.47.0, host API 1.47,
+`engine.minor=47`), played natively by the StarHermit client and in browsers by the engine's web
 runtime from one package.
 
 ## Rules
@@ -99,8 +99,12 @@ The string tables include complete regional variants for `fr-BE`, `de-BE`, `en-S
 
 <!-- regional-localization:end -->
 
-## Engine 1.44.1
+## Engine 1.47.0
 
-Browser play uses the WebGPU-only StarHermit 1.44.1 web runtime. Automatic ray-traced shadows are enabled on supported Vulkan devices, with mapped-shadow fallbacks elsewhere. Packaging creates block-compressed runtime textures and compressed glTF copies, retaining original image fallbacks.
+Browser play uses the WebGPU-only StarHermit 1.47.0 web runtime. Automatic ray-traced shadows are enabled on supported Vulkan devices, with mapped-shadow fallbacks elsewhere. Packaging creates block-compressed runtime textures and compressed glTF copies, retaining original image fallbacks.
 
 The help screen replays through retained native UI while its contents, options, layout and key bindings are unchanged.
+
+Browser rendering uses the engine's asynchronous pipeline creation so newly encountered materials do not stall the page. Native play retains the engine's synchronous pipeline behavior.
+
+Higher graphics tiers use native per-object motion blur for moving pieces and effects. Camera motion stays sharp, lower tiers omit the effect, and the runtime's Motion blur and Reduce motion preferences remain authoritative.
